@@ -1,0 +1,82 @@
+<div class="editor-base-container">
+  <!-- Header -->
+  <div class="header"></div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <!-- Font dropdown -->
+    <label for="fontSelect">Font:</label>
+    <select id="fontSelect" (change)="changeFont($event)">
+      <option value="Arial">Arial</option>
+      <option value="Times New Roman">Times New Roman</option>
+      <option value="Courier New">Courier New</option>
+    </select>
+
+    <!-- Font size controls -->
+    <label>Font Size:</label>
+    <button (click)="decreaseFontSize()">-</button>
+    <span>{{ fontSize }}</span>
+    <button (click)="increaseFontSize()">+</button>
+
+    <!-- Bold and Italic buttons -->
+    <button (click)="toggleBold()" [class.active]="isBold">Bold</button>
+    <button (click)="toggleItalic()" [class.active]="isItalic">Italic</button>
+
+    <!-- Find and Replace button -->
+    <button (click)="openFindReplaceModal()">Find and Replace</button>
+  </div>
+
+  <!-- Floating toolbar for 'Add Comment' or 'Go to Comment' -->
+  <div class="floating-toolbar" *ngIf="showFloatingToolbar" [ngStyle]="{ top: toolbarPosition.top + 'px', left: toolbarPosition.left + 'px' }">
+    <button *ngIf="!isExistingComment" (click)="openCommentPopup()">Add Comment</button>
+    <button *ngIf="isExistingComment" (click)="goToComment()">Go to Comment</button>
+  </div>
+
+  <!-- Editor and comments container -->
+  <div class="editor-container">
+    <!-- Editable Content -->
+    <div class="editor" contenteditable="true" (input)="onInput($event)">
+      <!-- The text content will be editable here -->
+    </div>
+
+    <!-- Comments panel (appears only when there are comments) -->
+    <div class="comments-panel" *ngIf="commentBoxes.length > 0">
+      <div *ngFor="let box of commentBoxes; let i = index" class="comment-box" [id]="'comment-' + i">
+        <ul class="comment-thread">
+          <li *ngFor="let comment of box.comments">{{ comment }}</li>
+        </ul>
+        <input type="text" [(ngModel)]="box.newReply" placeholder="Add a reply..." class="reply-input">
+        <button class="reply-button" (click)="addReply(i)">Reply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Find and Replace Modal -->
+  <div class="modal" *ngIf="isModalOpen">
+    <div class="modal-content">
+      <h2>Find and Replace</h2>
+
+      <!-- Input for Find -->
+      <label for="searchTerm">Find:</label>
+      <input type="text" id="searchTerm" [(ngModel)]="searchTerm">
+
+      <!-- Input for Replace -->
+      <label for="replacement">Replace with:</label>
+      <input type="text" id="replacement" [(ngModel)]="replacement">
+
+      <!-- Action Buttons -->
+      <button (click)="replaceAll()">Replace all</button>
+      <button (click)="closeModal()">Close</button>
+    </div>
+  </div>
+
+  <!-- Comment Popup -->
+  <div class="comment-popup" *ngIf="isCommentPopupOpen">
+    <div class="modal-content">
+      <h3>Enter Comment</h3>
+      <textarea [(ngModel)]="newCommentText" placeholder="Write your comment here..."></textarea>
+      <button (click)="saveComment()">Save Comment</button>
+      <button (click)="closeCommentPopup()">Cancel</button>
+    </div>
+  </div>
+</div>
