@@ -282,7 +282,7 @@ export class EditorBaseComponent {
 
 
       // Highlight the commented text
-      this.highlightSelectedText(); // trebace izmena jer izgleda ne radi
+      this.highlightSelectedText();
       this.closeCommentPopup();
 
       this.setCaretAtPosition(document.querySelector('.editor') as HTMLElement, end);
