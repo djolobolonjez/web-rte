@@ -35,7 +35,7 @@
   <!-- Editor and comments container -->
   <div class="editor-container">
     <!-- Editable Content -->
-    <div class="editor" contenteditable="true" (input)="onInput($event)">
+    <div class="editor" contenteditable="true" (input)="onInput($event)" (keydown)="onKeyDown($event)">
       <!-- The text content will be editable here -->
     </div>
 

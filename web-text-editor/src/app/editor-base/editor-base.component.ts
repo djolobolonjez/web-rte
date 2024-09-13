@@ -3,6 +3,7 @@ import { SearchManager } from '../../assets/pkg/editor_wasm';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { CommentBox, TextRange } from '../types/comment.box';
+import { range } from 'rxjs';
 
 @Component({
   selector: 'app-editor-base',
@@ -43,6 +44,8 @@ export class EditorBaseComponent {
   newCommentText: string = '';              // Holds new comment input
   commentBoxes: CommentBox[] = [];  // List of comment threads
 
+  nearestCommentSpan: HTMLElement | null = null;
+
   content: string = '';       // Store the editor's content
 
   constructor(private renderer: Renderer2) {}
@@ -67,38 +70,116 @@ export class EditorBaseComponent {
   // Ensure the editor stays focused and the caret remains in the same position
   restoreCaretFocus() {
     const editor = document.querySelector('.editor') as HTMLElement;
-    editor.focus();  // Re-focus the editor
+    editor.focus();
   }
 
-  // Check if the caret is inside bold or italic text and update the button states
+  // Check if the caret is inside bold or italic text and update the buttfon states
   checkTextState() {
     const selection = window.getSelection();
     const parentElement = selection?.anchorNode?.parentElement;
     if (parentElement) {
       // Check for bold state (inside <b>)
       this.isBold = parentElement.closest('b') !== null;
-
+      
+    //  console.log(this.getTextNodeAtPosition(parentElement, this.se))
+      // turn off bold if text is deleted
+      if (!this.isBold && document.queryCommandState('bold')) {
+        document.execCommand('bold', false, '');
+      }
       // Check for italic state (inside <i>)
       this.isItalic = parentElement.closest('i') !== null;
+
+      // turn off italic if text is deleted
+      if (!this.isItalic && document.queryCommandState('italic')) {
+        document.execCommand('italic', false, '');
+      }
+
+      if (this.nearestCommentSpan) {
+        this.nearestCommentSpan.setAttribute('contenteditable', 'true');
+        this.nearestCommentSpan = null;
+      }
+
     } else {
       this.isBold = false;
       this.isItalic = false;
     }
   }
 
+  // HELPER
+  handleSpanDeletion(span: HTMLElement, isBackspace: boolean): void {
+    // Replace the span with its content and a zero-width space to ensure the caret moves out
+    const zeroWidthSpace = document.createTextNode('\u200B');
+    span.replaceWith(...Array.from(span.childNodes), zeroWidthSpace);  // Replace the span with its contents
+
+    // Move the caret to after the zero-width space
+    const range = document.createRange();
+
+    const previousNode = zeroWidthSpace.previousSibling;
+    if (isBackspace && previousNode) {
+        range.setStart(previousNode, 1);  // Shift cursor one position to reset the backspace
+    }
+    else {
+      if (previousNode) {
+        range.setStart(previousNode, 0);  // Keep the cursor at the same position
+      } 
+    }
+    
+    range.collapse(true);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    console.log('Deleted span with comment attribute');
+  }
+
+
+    // Helper function to get the text node at a certain position, considering only text nodes
+  getTextNodeAtPosition(parent: HTMLElement, offset: number) {
+    let currentOffset = 0;
+
+    const treeWalker = document.createTreeWalker(
+      parent,
+      NodeFilter.SHOW_TEXT,  // Only consider text nodes
+      null
+    );
+
+    let node: Text | null;
+    while ((node = treeWalker.nextNode() as Text)) {
+      const nodeLength = node.textContent?.length || 0;
+
+      // Check if the offset falls within the current node's text content
+      if (currentOffset + nodeLength >= offset) {
+        return {
+          node,
+          startOffset: currentOffset  // Record the start offset for this node
+        };
+      }
+      currentOffset += nodeLength;
+    }
+    return null;
+  }
+
+
   // Check if text is selected, show the floating toolbar, and highlight commented text
   checkTextSelection() {
-    this.selectedRange = this.getSelectedPosition();
+    const editor = document.querySelector('.editor') as HTMLElement;
+    this.selectedRange = this.getSelectedPositionAbs();
     const selection = window.getSelection();
     if (selection && selection.toString().length > 0) {
-      const selectedRange = selection.getRangeAt(0);
+      const parentElement = selection.anchorNode?.parentElement;
+      const range = selection.getRangeAt(0);
       this.isTextSelected = true;
       this.selectedText = selection.toString();
-      // Check if the selected range overlaps or is inside any existing commented range
-      this.isExistingComment = this.commentBoxes.some((commBox) => this.isSubRange(this.selectedRange, commBox.selectionRange));
+      const startNode = this.getTextNodeAtPosition(editor, this.selectedRange.start);
+      const endNode = this.getTextNodeAtPosition(editor, this.selectedRange.end);
 
+      // Check if the selected range overlaps or is inside any existing commented range
+      this.isExistingComment = startNode?.node.parentElement?.getAttribute('comment') !== null || 
+        endNode?.node.parentElement?.getAttribute('comment') !== null;
+         
       // Get bounding rect to position floating toolbar
-      const rect = selectedRange.getBoundingClientRect();
+      const rect = range.getBoundingClientRect();
       this.toolbarPosition = { top: rect.top - 40, left: rect.left };
 
       // Show floating toolbar
@@ -109,19 +190,45 @@ export class EditorBaseComponent {
     }
   }
 
-  getSelectedPosition() : {start: number, end: number} {
-    let position = {start: 0, end: 0};
-    const selection = document.getSelection();
-
+  getSelectedPositionAbs(): { start: number, end: number } {
+    let start = 0;
+    let end = 0;
+    let charCount = 0;
+    
+    const selection = window.getSelection();
+    const editor = document.querySelector('.editor') as HTMLElement;
+  
     if (selection?.rangeCount) {
       const range = selection.getRangeAt(0);
-      /*let range2 = range.cloneRange();
-      range2.selectNodeContents(editor);*/
-      position.start = range.startOffset;
-      position.end = range.endOffset;
+      
+      const treeWalker = document.createTreeWalker(
+        editor,
+        NodeFilter.SHOW_TEXT, // Only show text nodes
+        null
+      );
+  
+      let node: Text | null;
+      while ((node = treeWalker.nextNode() as Text)) {
+        const nodeLength = node.textContent?.length || 0;
+  
+        // If the start of the range is in this node
+        if (node === range.startContainer) {
+          start = charCount + range.startOffset;
+        }
+  
+        // If the end of the range is in this node
+        if (node === range.endContainer) {
+          end = charCount + range.endOffset;
+          break;
+        }
+  
+        charCount += nodeLength;
+      }
     }
-    return position;
+  
+    return { start, end };
   }
+  
 
   // Updated isSubRange method to check based on absolute offsets
   isSubRange(selectedRange: TextRange, existingRange: TextRange): boolean {
@@ -135,11 +242,36 @@ export class EditorBaseComponent {
     this.showFloatingToolbar = false;  // Hide toolbar when popup is open
   }
 
+  setCaretAtPosition(editor: HTMLElement, charPos: number) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+  
+    // Get the text node and offset within the node for the specific global character position
+    const nodeInfo = this.getTextNodeAtPosition(editor, charPos);
+  
+    if (nodeInfo) {
+      // Set the range to collapse at the desired position
+      range.setStart(nodeInfo.node, charPos - nodeInfo.startOffset);
+      range.collapse(true);  // Collapse the range to a single point (just the cursor)
+  
+      // Clear existing selections and apply the new range
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+  
+      // Ensure the editor is focused
+      editor.focus();
+    } else {
+      console.error('Failed to set caret position');
+    }
+  }
+
   // Save the comment and highlight the selected text
   saveComment() {
+    // TODO: izmeniti kako se cuva comment thread
     if (this.newCommentText) {
       // Add comment to the list
       let { start, end } = this.selectedRange;
+      console.log(start, end);
       this.commentBoxes.push(new CommentBox(
         start, 
         end,
@@ -152,63 +284,62 @@ export class EditorBaseComponent {
       // Highlight the commented text
       this.highlightSelectedText(); // trebace izmena jer izgleda ne radi
       this.closeCommentPopup();
+
+      this.setCaretAtPosition(document.querySelector('.editor') as HTMLElement, end);
     }
   }
 
-  // Highlight commented text in the editor
   highlightSelectedText() {
     const editor = document.querySelector('.editor') as HTMLElement;
-    const range = document.createRange();
-    const selection = window.getSelection();
+    let range = document.createRange();
     
+    let {start, end} = this.selectedRange;
     // Get the text node and offsets for start and end
-    let startNode = this.getTextNodeAtPosition(editor, this.selectedRange.start);
-    let endNode = this.getTextNodeAtPosition(editor, this.selectedRange.end);
+    let startNodeInfo = this.getTextNodeAtPosition(editor, start);
+    let endNodeInfo = this.getTextNodeAtPosition(editor, end);
     
-    if (startNode && endNode) {
+    if (startNodeInfo && endNodeInfo) {
       // Set the range from the start and end offsets
-      range.setStart(startNode.node, this.selectedRange.start - startNode.startOffset);
-      range.setEnd(endNode.node, this.selectedRange.end - endNode.startOffset);
-      
+      console.log(startNodeInfo.startOffset, endNodeInfo.startOffset);
+      range.setStart(startNodeInfo.node, start - startNodeInfo.startOffset);
+      range.setEnd(endNodeInfo.node, end - endNodeInfo.startOffset);
+  
       const span = document.createElement('span');
       span.style.backgroundColor = '#f0f0f0';
       span.style.borderRadius = '4px';
       span.textContent = range.toString();
+      span.setAttribute('comment', 'true');
       
-      range.deleteContents(); // Remove the selected content
-      range.insertNode(span); // Insert the span with the highlighted style
-    }
+      range.deleteContents();
+      range.insertNode(span); 
+    } 
+
   }
 
-
-    // Helper function to get the text node at a certain position
-  getTextNodeAtPosition(parent: HTMLElement, offset: number) {
-    let currentOffset = 0;
-
-    const treeWalker = document.createTreeWalker(
-      parent,
-      NodeFilter.SHOW_TEXT,
-      null
-    );
-
-    let node: Text | null;
-    while ((node = treeWalker.nextNode() as Text)) {
-      const nodeLength = node.textContent?.length || 0;
-
-      // Check if the offset falls within the current node's text content
-      if (currentOffset + nodeLength >= offset) {
-        return {
-          node,
-          startOffset: currentOffset
-        };
-      }
-      currentOffset += nodeLength;
+  // crutch solution
+  moveCaretAfterSpan(span: HTMLElement) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+  
+    // Check if there is a next sibling to place the caret at the start of
+    if (span.nextSibling && span.nextSibling.textContent?.length) {
+      range.setStart(span.nextSibling, 1); // Move caret to the start of the next sibling
+    } else if (span.parentNode) {
+      // If no sibling, move the caret to the end of the parent element
+      const separatorSpan = document.createElement('span');
+      separatorSpan.innerHTML = '&nbsp'; // Use CSS to hide this
+      span.parentNode.insertBefore(separatorSpan, span.nextSibling);
+      range.setStartAfter(separatorSpan);
     }
-
-    return null;
+  
+    range.collapse(true);  // Collapse the range to ensure caret placement
+  
+    // Clear any previous selection and set the new range
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   }
 
-
+  
   // Close the comment popup
   closeCommentPopup() {
     this.isCommentPopupOpen = false;
@@ -226,15 +357,17 @@ export class EditorBaseComponent {
 
   // Focus on the comment in the panel
   goToComment() {
+    // TODO: izmeniti pretragu
     const commentBox = this.commentBoxes.find(box => this.isSubRange(this.selectedRange, box.selectionRange));
     if (commentBox) {
+      console.log('koji k');
       const boxIndex = this.commentBoxes.indexOf(commentBox);
       console.log(boxIndex);
       const commentBoxElement = document.getElementById('comment-' + boxIndex);
       if (commentBoxElement) {
         commentBoxElement.scrollIntoView({ behavior: 'smooth' });
       }
-    }
+    } 
     
     this.showFloatingToolbar = false;
   }
@@ -322,10 +455,114 @@ export class EditorBaseComponent {
     this.restoreCaretFocus();  // Restore caret focus after applying font size
   }
 
+  getSelectionParentElement(): HTMLElement | undefined {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      return selection.anchorNode?.parentNode as HTMLElement;
+    }
+    return undefined
+  }
+
+  getCurrentRange(): Range | undefined {
+    return window.getSelection()?.getRangeAt(0);
+  }
+
+  processCommentDeletion(isBackspace: boolean) {
+
+    // TODO: azurirati indekse komentara
+    const selection = window.getSelection();
+
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const parentElement = selection.anchorNode?.parentNode as HTMLElement;
+      const nextSibling =  selection.anchorNode?.nextSibling as HTMLElement;
+
+      const parentSpan = parentElement && parentElement?.tagName?.toLowerCase() === 'span' && parentElement?.hasAttribute('comment');
+      const siblingSpan = nextSibling && nextSibling?.tagName?.toLowerCase() === 'span' && nextSibling?.hasAttribute('comment');
+      // Check if the caret is inside a span with the 'comment' attribute
+      if (parentSpan || siblingSpan) {
+
+        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));          
+        let spanIndex = allSpans.indexOf(parentElement);
+
+        const span = spanIndex < 0 ? nextSibling : parentElement;
+        spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex; 
+
+        // Check if it's the last character in the span
+        const spanContentLength = span.textContent?.length || 0;
+
+        // For Backspace: Check if the caret is at the start (deleting the last character)
+        if (spanContentLength === 1) {
+          this.handleSpanDeletion(span, isBackspace);
+          this.commentBoxes.splice(spanIndex, 1);
+        } 
+      }
+    }
+  }
+
+  
+  checkCommentAreaChange(isInput: boolean) {
+    // check if character is inserted, or just the cursor was moved
+    const parentElement = this.getSelectionParentElement();
+    const range = this.getCurrentRange();
+    if (parentElement && this.isComment(parentElement)) {
+      if (isInput) {
+        const shouldPreventEdit = range?.startOffset == 0 || range?.startOffset == parentElement.textContent?.length; // borders of comment span
+        if (shouldPreventEdit) {
+          parentElement.setAttribute('contenteditable', 'false');
+          this.moveCaretOutsideSpan(parentElement, range?.startOffset !== 0);
+          const editor = document.querySelector('.editor') as HTMLElement;
+          editor.focus();
+          this.nearestCommentSpan = parentElement;
+        } else {
+          // TODO: azurirati indekse komentara
+        }    
+      } 
+    }
+  }
+
+
+
+  isComment(element: HTMLElement | undefined): boolean {
+    if (!element) 
+      return false;
+
+    return element.tagName.toLowerCase() === 'span' && element.hasAttribute('comment');
+  }
+
+  onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      this.processCommentDeletion(event.key === 'Backspace');
+    } else {
+      this.checkCommentAreaChange(event.key != 'ArrowLeft' && event.key != 'ArrowRight'); // check for possible character input that affects commented text
+    } 
+  }
+
+  moveCaretOutsideSpan(span: HTMLElement, moveAfter: boolean) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+  
+    if (moveAfter) {
+      // Move caret after the span
+      if (span.nextSibling) {
+        range.setStart(span.nextSibling, 0); // Move to the start of the next sibling
+      } else if (span.parentNode) {
+        range.setStartAfter(span); // If no sibling, move to the end of the span
+      }
+    } else {
+      // Move caret before the span
+      range.setStartBefore(span);
+    }
+  
+    range.collapse(true); // Collapse the range to set the caret position
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
   // Attach listeners for caret position changes
   async ngOnInit() {
     const editor = document.querySelector('.editor') as HTMLElement;
-    // Listen to keyup and mouseup events and update bold/italic and font size and type
+
     this.renderer.listen(editor, 'keyup', () => {
       this.checkTextState();
       this.updateFontIndicator();
