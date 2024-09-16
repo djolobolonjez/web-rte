@@ -22,6 +22,10 @@
     <button (click)="toggleBold()" [class.active]="isBold">Bold</button>
     <button (click)="toggleItalic()" [class.active]="isItalic">Italic</button>
 
+    <!-- Undo and Redo buttons -->
+    <button (click)="undo()">Undo</button>
+    <button (click)="redo()">Redo</button>
+
     <!-- Find and Replace button -->
     <button (click)="openFindReplaceModal()">Find and Replace</button>
   </div>
@@ -55,18 +59,23 @@
   <div class="modal" *ngIf="isModalOpen">
     <div class="modal-content">
       <h2>Find and Replace</h2>
-
+  
       <!-- Input for Find -->
       <label for="searchTerm">Find:</label>
       <input type="text" id="searchTerm" [(ngModel)]="searchTerm">
-
+  
       <!-- Input for Replace -->
       <label for="replacement">Replace with:</label>
       <input type="text" id="replacement" [(ngModel)]="replacement">
-
+  
       <!-- Action Buttons -->
-      <button (click)="replaceAll()">Replace all</button>
-      <button (click)="closeModal()">Close</button>
+      <div class="button-container">
+        <button (click)="findNext()">Find Next</button>
+        <button (click)="replace()">Replace</button>
+        <button (click)="replaceAll()">Replace All</button>
+      </div>
+  
+      <button class="close-button" (click)="closeModal()">Close</button>
     </div>
   </div>
 
