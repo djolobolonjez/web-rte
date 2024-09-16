@@ -3,7 +3,10 @@ import { SearchManager } from '../../assets/pkg/editor_wasm';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { CommentBox, TextRange } from '../types/comment.box';
-import { range } from 'rxjs';
+
+import * as $ from 'jquery';
+import { connect } from 'rxjs';
+import { RouterTestingHarness } from '@angular/router/testing';
 
 @Component({
   selector: 'app-editor-base',
@@ -18,6 +21,7 @@ export class EditorBaseComponent {
   isBold: boolean = false;    // Track whether bold mode is active or not
   isItalic: boolean = false;  // Track whether italic mode is active or not
 
+  wordToFind: string = '';
   searchTerm: string = '';  // Term to find
   replacement: string = '';  // Term to replace with
   isModalOpen: boolean = false;  // Controls Find/Replace modal
@@ -43,6 +47,9 @@ export class EditorBaseComponent {
   isCommentPopupOpen: boolean = false;      // Control for the comment popup
   newCommentText: string = '';              // Holds new comment input
   commentBoxes: CommentBox[] = [];  // List of comment threads
+
+  foundWords: number[] = [];
+  foundWordRangeStart: number = -1;
 
   nearestCommentSpan: HTMLElement | null = null;
 
@@ -81,7 +88,6 @@ export class EditorBaseComponent {
       // Check for bold state (inside <b>)
       this.isBold = parentElement.closest('b') !== null;
       
-    //  console.log(this.getTextNodeAtPosition(parentElement, this.se))
       // turn off bold if text is deleted
       if (!this.isBold && document.queryCommandState('bold')) {
         document.execCommand('bold', false, '');
@@ -95,6 +101,8 @@ export class EditorBaseComponent {
       }
 
       if (this.nearestCommentSpan) {
+
+        // writing after or before comment (you can only write inside it, or use find/replace dialog)
         this.nearestCommentSpan.setAttribute('contenteditable', 'true');
         this.nearestCommentSpan = null;
       }
@@ -175,8 +183,7 @@ export class EditorBaseComponent {
       const endNode = this.getTextNodeAtPosition(editor, this.selectedRange.end);
 
       // Check if the selected range overlaps or is inside any existing commented range
-      this.isExistingComment = startNode?.node.parentElement?.getAttribute('comment') !== null || 
-        endNode?.node.parentElement?.getAttribute('comment') !== null;
+      this.isExistingComment = this.commentBoxes.some(box => this.isSubRange(this.selectedRange, box.selectionRange));
          
       // Get bounding rect to position floating toolbar
       const rect = range.getBoundingClientRect();
@@ -236,6 +243,14 @@ export class EditorBaseComponent {
            (selectedRange.end >= existingRange.start && selectedRange.end <= existingRange.end);
   }
 
+  undo() {
+
+  }
+
+  redo() {
+
+  }
+
   // Open the comment popup
   openCommentPopup() {
     this.isCommentPopupOpen = true;
@@ -267,11 +282,9 @@ export class EditorBaseComponent {
 
   // Save the comment and highlight the selected text
   saveComment() {
-    // TODO: izmeniti kako se cuva comment thread
     if (this.newCommentText) {
       // Add comment to the list
       let { start, end } = this.selectedRange;
-      console.log(start, end);
       this.commentBoxes.push(new CommentBox(
         start, 
         end,
@@ -286,24 +299,15 @@ export class EditorBaseComponent {
       this.closeCommentPopup();
 
       this.setCaretAtPosition(document.querySelector('.editor') as HTMLElement, end);
+      // ovde
     }
   }
 
   highlightSelectedText() {
     const editor = document.querySelector('.editor') as HTMLElement;
     let range = document.createRange();
-    
-    let {start, end} = this.selectedRange;
-    // Get the text node and offsets for start and end
-    let startNodeInfo = this.getTextNodeAtPosition(editor, start);
-    let endNodeInfo = this.getTextNodeAtPosition(editor, end);
-    
-    if (startNodeInfo && endNodeInfo) {
-      // Set the range from the start and end offsets
-      console.log(startNodeInfo.startOffset, endNodeInfo.startOffset);
-      range.setStart(startNodeInfo.node, start - startNodeInfo.startOffset);
-      range.setEnd(endNodeInfo.node, end - endNodeInfo.startOffset);
-  
+
+    if (this.setRangeNodesForPosition(editor, this.selectedRange,  range)) {
       const span = document.createElement('span');
       span.style.backgroundColor = '#f0f0f0';
       span.style.borderRadius = '4px';
@@ -312,11 +316,11 @@ export class EditorBaseComponent {
       
       range.deleteContents();
       range.insertNode(span); 
-    } 
-
+    }
   }
 
   // crutch solution
+  // probably useless function
   moveCaretAfterSpan(span: HTMLElement) {
     const range = document.createRange();
     const selection = window.getSelection();
@@ -327,7 +331,7 @@ export class EditorBaseComponent {
     } else if (span.parentNode) {
       // If no sibling, move the caret to the end of the parent element
       const separatorSpan = document.createElement('span');
-      separatorSpan.innerHTML = '&nbsp'; // Use CSS to hide this
+      separatorSpan.innerHTML = '&nbsp'; // Use CSS to hide thiskey
       span.parentNode.insertBefore(separatorSpan, span.nextSibling);
       range.setStartAfter(separatorSpan);
     }
@@ -357,12 +361,9 @@ export class EditorBaseComponent {
 
   // Focus on the comment in the panel
   goToComment() {
-    // TODO: izmeniti pretragu
     const commentBox = this.commentBoxes.find(box => this.isSubRange(this.selectedRange, box.selectionRange));
     if (commentBox) {
-      console.log('koji k');
       const boxIndex = this.commentBoxes.indexOf(commentBox);
-      console.log(boxIndex);
       const commentBoxElement = document.getElementById('comment-' + boxIndex);
       if (commentBoxElement) {
         commentBoxElement.scrollIntoView({ behavior: 'smooth' });
@@ -411,20 +412,266 @@ export class EditorBaseComponent {
 
   openFindReplaceModal() {
     this.isModalOpen = true;
+    this.selectedRange = this.getSelectedPositionAbs();
+  }
+
+  setRangeNodesForPosition(element: HTMLElement | null, textRange: TextRange, range: Range): boolean {
+    if (!element)
+      return false;
+
+    const startNodeInfo = this.getTextNodeAtPosition(element, textRange.start);
+    const endNodeInfo = this.getTextNodeAtPosition(element, textRange.end);
+
+    if (!startNodeInfo || !endNodeInfo)
+      return false;
+
+    range.setStart(startNodeInfo.node, textRange.start - startNodeInfo.startOffset);
+    range.setEnd(endNodeInfo.node, textRange.end - endNodeInfo.startOffset);
+    return true;
   }
 
   closeModal() {
+    const editor = document.querySelector('.editor') as HTMLElement;
     this.isModalOpen = false;
+
+    let range = document.createRange();
+    if (this.setRangeNodesForPosition(editor, this.selectedRange, range)) {
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      editor.focus();
+    }
+
+    this.foundWords = [];
+    this.foundWordRangeStart = -1;
+    this.searchTerm = '';
+    this.wordToFind = '';
+    this.replacement = '';
   }
+
+  highlightRange(start: number, end: number) {
+    const editor = document.querySelector('.editor') as HTMLElement;
+    const range = document.createRange();
+
+    if (this.setRangeNodesForPosition(editor, {start: start, end: end}, range)) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();  // Clear previous selections
+      selection?.addRange(range);  // Highlight the range
+
+      editor.focus();  
+    }
+  }
+
+  isValidSearch(startIndex: number, endIndex: number): boolean {
+
+    if (this.commentBoxes.length == 0) 
+      return true;
+
+    let foundComments = this.commentBoxes.filter(comm => {
+      return (startIndex >= comm.selectionRange.start && startIndex <= comm.selectionRange.end)
+      || (endIndex >= comm.selectionRange.start && endIndex <= comm.selectionRange.end);
+    })
+
+    if (foundComments.length > 1) {
+      return false;
+    }
+
+    if (foundComments.length == 0) {
+      return true;
+    }    
+    const comm = foundComments[0];
+
+    return startIndex >= comm.selectionRange.start && endIndex <= comm.selectionRange.end; 
+  }
+
+  findNext() {
+    const editor = document.querySelector('.editor') as HTMLElement;
+
+    if (this.searchTerm !== this.wordToFind) {
+      this.foundWords = [];
+    }
+    this.wordToFind = this.searchTerm;
+    if (!this.foundWords.length) {
+      this.searchManager.set_content(editor.innerText);
+      this.foundWords = Array.from(this.searchManager.find_all(this.wordToFind));
+    }
+    if (this.foundWords.length) {
+      this.foundWords = this.foundWords.filter(startIndex => {
+        return this.isValidSearch(startIndex, startIndex + this.wordToFind.length);
+      });
+
+      if (!this.foundWords.length) {
+        return;
+      }
+      this.foundWordRangeStart = this.foundWords.shift()!;
+      this.foundWords.push(this.foundWordRangeStart);
+
+      this.selectedRange = {start: this.foundWordRangeStart, end: this.foundWordRangeStart + this.wordToFind.length};
+      this.highlightRange(this.selectedRange.start, this.selectedRange.end);
+    }
+
+  }
+
+  replace() {
+    // For now, don't allow empty replacement word
+    if (!this.replacement.length) {
+      return;
+    }
+    const editor = document.querySelector('.editor') as HTMLElement;
+
+    if (this.searchTerm !== this.wordToFind) {
+      this.foundWords = [];
+    }
+    this.wordToFind = this.searchTerm;
+    if (!this.foundWords.length) {
+      this.searchManager.set_content(editor.innerText);
+      this.foundWords = Array.from(this.searchManager.find_all(this.wordToFind));
+      if (!this.foundWords.length)
+        return;
+    }
+
+    this.foundWords = this.foundWords.filter(startIndex => {
+      return this.isValidSearch(startIndex, startIndex + this.wordToFind.length);
+    });
+
+    if (!this.foundWords.length) {
+      return;
+    }
+
+    if (this.foundWordRangeStart == -1) {
+      this.foundWordRangeStart = this.foundWords.shift()!; // replace the next word that matches searched word
+    } else {
+      this.foundWords.pop(); // replace found word (after click on 'Find next')
+    }
+    
+    this.selectedRange = {start: this.foundWordRangeStart, end: this.foundWordRangeStart + this.replacement.length};
+    
+    const shiftAmount = this.replacement.length - this.wordToFind.length;
+    this.replaceWordAndShiftSpaces(editor, this.selectedRange.start, this.selectedRange.start + this.wordToFind.length, this.replacement);
+
+    this.searchManager.set_content(editor.innerText);
+    this.foundWords.forEach((value, index, array) => {
+      if (array[index] > this.foundWordRangeStart) 
+        array[index] += shiftAmount;  
+    });
+    // ovde
+    this.foundWordRangeStart = -1;
+  }
+  
 
   replaceAll() {
     this.searchManager.set_content(this.content);
-    const updatedContent = this.searchManager.find_and_replace(this.searchTerm, this.replacement);
+    const updatedContent = this.searchManager.replace_all(this.searchTerm, this.replacement);
     this.content = updatedContent;  
-    
+
     this.updateEditor()
-    this.closeModal();  // Close the modal after text replacement
   }
+
+    // Replace word considering both text and HTML elements
+  replaceWordAndShiftSpaces(editor: HTMLElement, start: number, end: number, replacement: string) {
+
+    let range = document.createRange();
+
+    const comment = this.commentBoxes.filter(comm => {
+      return start >= comm.selectionRange.start && end <= comm.selectionRange.end;
+    }) 
+
+    let startIndex = start, endIndex = end;
+    if (comment.length > 0) {
+      startIndex = comment[0].selectionRange.start;
+      endIndex = comment[0].selectionRange.end;
+    }
+
+    if (this.setRangeNodesForPosition(editor, {start: startIndex, end: endIndex}, range)) {
+      const shiftAmount = replacement.length - (end - start);
+
+      const containerFragment = range.cloneContents();  
+
+      const content = containerFragment.firstElementChild as HTMLElement;
+
+      console.log(content);
+
+      let newNode: Node | null;
+      if (content) {
+        if (!comment.length) {
+          content.textContent = replacement;
+        }
+        else {
+          let str = content.textContent;
+          content.textContent = str?.substring(0, start - startIndex) + replacement + str?.substring(end - startIndex);
+        }
+
+        newNode = content;
+      } else {
+        newNode = document.createTextNode(replacement);
+      }
+      range.deleteContents();
+      range.insertNode(newNode);
+    
+      // in case of empty spans (crutch solution)
+      if (comment.length > 0) 
+        editor.innerHTML = editor.innerHTML.replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+
+      this.shiftComments(shiftAmount, start, end);
+    }
+  }
+
+  shiftComments (shiftAmount: number, start: number, end: number, force: boolean = false) {
+    // TODO: ugly method
+    this.commentBoxes.forEach((value, index, array) => {
+      let startIndex = array[index].selectionRange.start;
+      let endIndex = array[index].selectionRange.end;
+      if (startIndex > start) {
+        array[index].selectionRange.start += shiftAmount;
+        array[index].selectionRange.end += shiftAmount;
+
+        if (end > startIndex && end < endIndex) {
+          array[index].selectionRange.start += (end - startIndex); // add back range lost due to deletion part of comment
+        }
+      } else if (startIndex == start) {
+        array[index].selectionRange.end += shiftAmount;
+        if (force) {
+          array[index].selectionRange.start += shiftAmount;
+        }
+      } else {
+        if (endIndex >= start) {
+          array[index].selectionRange.end += shiftAmount;
+        }
+      }
+    });
+  }
+  
+  // Adds spaces after the given node or appends them if no sibling exists
+
+  // Probably useless function
+  addSpacesAfter(node: Node, shiftAmount: number, start: number, end: number) {
+      const spaceText = ' '.repeat(shiftAmount);
+      const spaceNode = document.createTextNode(spaceText);
+  
+      if (node.nextSibling) {
+        // Insert spaces after the node if there's a next sibling
+        node.parentNode?.insertBefore(spaceNode, node.nextSibling);
+      } else {
+          // Append spaces at the end if no sibling exists
+        node.parentNode?.appendChild(spaceNode);
+      }
+      this.shiftComments(shiftAmount, start, end);
+  }
+  
+  // Removes `shiftAmount` spaces from the given text node
+  // Probably useless function
+  removeSpacesFromNode(node: Node, shiftAmount: number, start: number, end: number) {
+      const textContent = node.textContent || '';
+      const spaceCount = (textContent.match(/ +$/)?.[0]?.length || 0); // Find trailing spaces
+  
+      if (spaceCount > 0) {
+          // Remove `shiftAmount` spaces
+        node.textContent = textContent.slice(0, textContent.length - Math.min(shiftAmount, spaceCount));
+        this.shiftComments(shiftAmount, start, end);
+      }
+  }
+
 
   // Change the font family based on user selection
   changeFont(event: Event) {
@@ -468,9 +715,23 @@ export class EditorBaseComponent {
     return window.getSelection()?.getRangeAt(0);
   }
 
-  processCommentDeletion(isBackspace: boolean) {
+  removeAllSubrangeComments (selectedRange: TextRange) {
+    this.commentBoxes = this.commentBoxes.filter(box => {
+      return !(box.selectionRange.start >= selectedRange.start && box.selectionRange.end <= selectedRange.end);
+    });
+  }
 
-    // TODO: azurirati indekse komentara
+  processSelectionIntersectingComments(selectedRange: TextRange) {
+    this.removeAllSubrangeComments(selectedRange);
+    const shiftAmount = selectedRange.end - selectedRange.start;
+    this.shiftComments(-shiftAmount, selectedRange.start, selectedRange.end);
+  } 
+
+  processCommentDeletion(isBackspace: boolean, isRangeDeleted: boolean, selectedRange: TextRange) {
+    if (isRangeDeleted) {
+      this.processSelectionIntersectingComments(selectedRange);    
+      return;
+    } 
     const selection = window.getSelection();
 
     if (selection && selection.rangeCount > 0) {
@@ -482,13 +743,11 @@ export class EditorBaseComponent {
       const siblingSpan = nextSibling && nextSibling?.tagName?.toLowerCase() === 'span' && nextSibling?.hasAttribute('comment');
       // Check if the caret is inside a span with the 'comment' attribute
       if (parentSpan || siblingSpan) {
-
         const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));          
         let spanIndex = allSpans.indexOf(parentElement);
 
         const span = spanIndex < 0 ? nextSibling : parentElement;
         spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex; 
-
         // Check if it's the last character in the span
         const spanContentLength = span.textContent?.length || 0;
 
@@ -497,6 +756,8 @@ export class EditorBaseComponent {
           this.handleSpanDeletion(span, isBackspace);
           this.commentBoxes.splice(spanIndex, 1);
         } 
+     //   this.shiftComments(-1, this.getCursorOnKeyDown(isBackspace));
+        this.shiftComments(-1, selectedRange.start, selectedRange.end, isBackspace);
       }
     }
   }
@@ -504,39 +765,79 @@ export class EditorBaseComponent {
   
   checkCommentAreaChange(isInput: boolean) {
     // check if character is inserted, or just the cursor was moved
-    const parentElement = this.getSelectionParentElement();
+    const selection = window.getSelection();
+    const parentElement = selection?.anchorNode?.parentNode as HTMLElement;
+    const nextSibling =  selection?.anchorNode?.nextSibling as HTMLElement;
+
+    const parentSpan = parentElement && this.isComment(parentElement);
+    const siblingSpan = nextSibling && this.isComment(nextSibling);
     const range = this.getCurrentRange();
-    if (parentElement && this.isComment(parentElement)) {
+    if (parentSpan || siblingSpan) {
       if (isInput) {
+        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));          
+        let spanIndex = allSpans.indexOf(parentElement);
+
+        const span = spanIndex < 0 ? nextSibling : parentElement;
+        spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex; // TODO: I OVO SE PONAVLJA, SREDITI
+        
         const shouldPreventEdit = range?.startOffset == 0 || range?.startOffset == parentElement.textContent?.length; // borders of comment span
+        console.log(range?.startOffset);
+        console.log(parentElement.textContent?.length);
         if (shouldPreventEdit) {
           parentElement.setAttribute('contenteditable', 'false');
           this.moveCaretOutsideSpan(parentElement, range?.startOffset !== 0);
           const editor = document.querySelector('.editor') as HTMLElement;
           editor.focus();
           this.nearestCommentSpan = parentElement;
-        } else {
-          // TODO: azurirati indekse komentara
-        }    
+        }     
       } 
     }
   }
-
-
 
   isComment(element: HTMLElement | undefined): boolean {
     if (!element) 
       return false;
 
-    return element.tagName.toLowerCase() === 'span' && element.hasAttribute('comment');
+    return element.tagName?.toLowerCase() === 'span' && element.hasAttribute('comment');
+  }
+
+  getCursorOnKeyDown(shift: boolean): number {
+    let cursor = this.getSelectedPositionAbs().start;
+    cursor = shift ? cursor - 1 : cursor;
+    return cursor < 0 ? 0 : cursor; // in case of document beginning
   }
 
   onKeyDown(event: KeyboardEvent): void {
-    if (event.key === 'Backspace' || event.key === 'Delete') {
-      this.processCommentDeletion(event.key === 'Backspace');
-    } else {
-      this.checkCommentAreaChange(event.key != 'ArrowLeft' && event.key != 'ArrowRight'); // check for possible character input that affects commented text
+    if (event.key === 'Enter') {
+      // bilo je drugacije
+      const selectedRange = this.getSelectedPositionAbs();
+      const shiftAmount = selectedRange.end - selectedRange.start;
+      this.shiftComments(1, selectedRange.start, selectedRange.end, true);
+      document.execCommand('insertLineBreak');
+      event.preventDefault();
+      // ovde
+    }
+    else if (event.key === 'Backspace' || event.key === 'Delete') {
+      const selectedRange = this.getSelectedPositionAbs();
+      console.log(selectedRange);
+      const isRangeDeleted = (selectedRange.end - selectedRange.start > 0);
+      this.processCommentDeletion(event.key === 'Backspace', isRangeDeleted, selectedRange);
+      // ovde
+      // change comments position after delete  
     } 
+    else {
+      const noTextKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Shift', 'Control', 'Alt', 'CapsLock'];
+      const isInput = !noTextKeys.includes(event.key);
+      // check for possible character input that affects commented text, and shift subsequent comments anyway
+      this.checkCommentAreaChange(isInput); 
+      if (isInput) {
+        //this.shiftComments(1, this.getCursorOnKeyDown(false), true);
+        const selectedRange = this.getSelectedPositionAbs();
+        this.shiftComments(1, selectedRange.start, selectedRange.end, true);
+        // ovde
+      }
+    } 
+    console.log(this.commentBoxes);
   }
 
   moveCaretOutsideSpan(span: HTMLElement, moveAfter: boolean) {
