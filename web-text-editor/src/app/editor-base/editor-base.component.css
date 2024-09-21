@@ -101,7 +101,29 @@ button.active {
 }
 
 .comment-thread li {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background-color: #fff;
+  border-radius: 4px;
+}
+
+/* Author styling */
+.comment-author {
+  font-weight: bold;
   margin-bottom: 5px;
+}
+
+/* Comment text styling */
+.comment-text {
+  margin-bottom: 10px;
+}
+
+/* Date styling */
+.comment-date {
+  font-size: 12px;
+  color: #888; /* Light grey color */
+  margin-top: 5px;
 }
 
 .reply-input {

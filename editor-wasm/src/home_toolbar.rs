@@ -2,11 +2,11 @@ use std::collections::VecDeque;
 
 use wasm_bindgen::prelude::*;
 
-const MAX_CAPACITY: usize = 20;
-
 #[wasm_bindgen]
 pub struct SearchManager {
     content: String,
+    found_indices: VecDeque<usize>,
+    word_to_find: String
 }
 
 #[wasm_bindgen]
@@ -15,6 +15,8 @@ impl SearchManager {
     pub fn new (content: String) -> Self {
         Self {
             content,
+            found_indices: VecDeque::new(),
+            word_to_find: String::new(),
         }
     }
 
@@ -31,54 +33,54 @@ impl SearchManager {
         self.content.clone()
     }
 
-    pub fn find_all(&self, text: &str) -> Vec<usize> {
-        return self.content.match_indices(text).map(|pair| pair.0).collect();   
-    }
-}
+    pub fn find_next(&mut self, search_term: &str) -> Option<usize> {
 
-#[wasm_bindgen]
-pub struct VersionManager {
-    latest_versions: VecDeque<String>,
-    current_index: usize,
-}
-
-impl VersionManager {
-    pub fn new(initial_content: String) -> Self {
-        let mut instance = Self {
-            latest_versions: VecDeque::with_capacity(MAX_CAPACITY),
-            current_index: 0,
-        };
-        instance.latest_versions.push_back(initial_content);
-
-        instance
-    }
-
-    pub fn undo(&mut self) -> Option<String> {
-        if self.current_index == 0 {
-            return None;
+        if self.found_indices.is_empty() || search_term != self.word_to_find {
+            self.found_indices = self.content.match_indices(search_term).map(|pair| pair.0).collect();
         }
 
-        self.current_index -= 1;
-        let prev_content = self.latest_versions[self.current_index].clone();
-        Some(prev_content)
-    }
+        self.word_to_find = search_term.to_owned();
 
-    pub fn redo(&mut self) -> Option<String> {
-        if self.current_index == self.latest_versions.len() {
-            return None;
+        match self.found_indices.pop_front() {
+            None => { return None; }
+            Some(x) => { 
+                self.found_indices.push_back(x);
+                Some(x)
+            }
         }
-
-        self.current_index += 1;
-        let later_content = self.latest_versions[self.current_index].clone();
-        Some(later_content)
     }
 
-    pub fn add_content(&mut self, content: String) {
-        if self.latest_versions.len() == MAX_CAPACITY {
-            self.latest_versions.pop_front();
+    pub fn remove_last(&mut self) {
+        self.found_indices.pop_back();
+    }
+
+    pub fn clear(&mut self) {
+        self.found_indices.clear();
+    }
+
+    pub fn shift_after_index(&mut self, index: usize, shift_amount: usize, neg: bool) {
+        self.found_indices
+            .iter_mut()
+            .filter(|&&mut word_index| word_index > index)
+            .for_each(|word_index| match neg {
+                true => *word_index -= shift_amount,
+                false => *word_index += shift_amount
+            });
+    }
+
+    pub fn insert_in_order(&mut self, word_index: usize) {
+        let mut insert_pos = self.found_indices.len(); 
+    
+        for (i, &current_element) in self.found_indices.iter().enumerate() {
+            if current_element > word_index {
+                insert_pos = i;
+                break; 
+            }
         }
-        self.latest_versions.push_back(content);
+        self.found_indices.insert(insert_pos, word_index);
     }
 
-
+    pub fn remove_element(&mut self, word_index: usize) {
+        self.found_indices.retain(|&x| x != word_index);
+    }
 }

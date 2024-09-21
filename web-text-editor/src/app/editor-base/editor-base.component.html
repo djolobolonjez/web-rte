@@ -44,13 +44,17 @@
     </div>
 
     <!-- Comments panel (appears only when there are comments) -->
-    <div class="comments-panel" *ngIf="commentBoxes.length > 0">
-      <div *ngFor="let box of commentBoxes; let i = index" class="comment-box" [id]="'comment-' + i">
+    <div class="comments-panel" *ngIf="commentContainers.length > 0">
+      <div *ngFor="let comm of commentContainers; let i = index" class="comment-box" [id]="'comment-' + i">
         <ul class="comment-thread">
-          <li *ngFor="let comment of box.comments">{{ comment }}</li>
+          <li *ngFor="let reply of comm.getReplies()">
+            <div class="comment-author">{{ reply.getAuthor() }}</div>
+            <div class="comment-text">{{ reply.getText() }}</div>
+            <div class="comment-date">{{ reply.getLastModified() }}</div>
+          </li>
         </ul>
-        <input type="text" [(ngModel)]="box.newReply" placeholder="Add a reply..." class="reply-input">
-        <button class="reply-button" (click)="addReply(i)">Reply</button>
+        <input type="text" [(ngModel)]="newReply" placeholder="Add a reply..." class="reply-input">
+        <button class="reply-button" (click)="addReply(comm.getID())">Reply</button>
       </div>
     </div>
   </div>
@@ -59,22 +63,22 @@
   <div class="modal" *ngIf="isModalOpen">
     <div class="modal-content">
       <h2>Find and Replace</h2>
-  
+
       <!-- Input for Find -->
       <label for="searchTerm">Find:</label>
       <input type="text" id="searchTerm" [(ngModel)]="searchTerm">
-  
+
       <!-- Input for Replace -->
       <label for="replacement">Replace with:</label>
       <input type="text" id="replacement" [(ngModel)]="replacement">
-  
+
       <!-- Action Buttons -->
       <div class="button-container">
         <button (click)="findNext()">Find Next</button>
         <button (click)="replace()">Replace</button>
         <button (click)="replaceAll()">Replace All</button>
       </div>
-  
+
       <button class="close-button" (click)="closeModal()">Close</button>
     </div>
   </div>

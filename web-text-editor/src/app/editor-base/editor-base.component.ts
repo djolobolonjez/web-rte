@@ -1,12 +1,17 @@
 import { Component, Renderer2 } from '@angular/core';
-import { SearchManager } from '../../assets/pkg/editor_wasm';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { CommentBox, TextRange } from '../types/comment.box';
-
-import * as $ from 'jquery';
-import { connect } from 'rxjs';
-import { RouterTestingHarness } from '@angular/router/testing';
+import { Editor } from '../core/impl/editor';
+import { InlineStyle } from '../impl/commands/InlineStyle';
+import { UndoRedoManager } from '../impl/UndoRedoManager';
+import { Find } from '../impl/commands/find';
+import { ReplaceAll } from '../impl/commands/replaceall';
+import { Replace } from '../impl/commands/replace';
+import { Comment } from '../impl/commands/comment';
+import { CommentHandler } from '../impl/CommentHandler';
+import { CommentContainer } from '../types/CommentContainer';
+import { Reply } from '../impl/commands/reply';
 
 @Component({
   selector: 'app-editor-base',
@@ -16,10 +21,10 @@ import { RouterTestingHarness } from '@angular/router/testing';
   imports: [CommonModule, FormsModule]
 })
 export class EditorBaseComponent {
-  searchManager!: SearchManager;
 
   isBold: boolean = false;    // Track whether bold mode is active or not
   isItalic: boolean = false;  // Track whether italic mode is active or not
+  editor: Editor;
 
   wordToFind: string = '';
   searchTerm: string = '';  // Term to find
@@ -48,6 +53,11 @@ export class EditorBaseComponent {
   newCommentText: string = '';              // Holds new comment input
   commentBoxes: CommentBox[] = [];  // List of comment threads
 
+  newReply: string = '';
+
+  commentContainers: Readonly<CommentContainer[]>;
+  commentHandler: CommentHandler;
+
   foundWords: number[] = [];
   foundWordRangeStart: number = -1;
 
@@ -63,15 +73,11 @@ export class EditorBaseComponent {
   }
 
   toggleBold() {
-    this.isBold = !this.isBold; 
-    document.execCommand('bold', false, '');
-    this.restoreCaretFocus();
+    new InlineStyle('bold').execute();
   }
 
   toggleItalic() {
-    this.isItalic = !this.isItalic;
-    document.execCommand('italic', false, '');
-    this.restoreCaretFocus();
+    new InlineStyle('italic').execute();
   }
 
   // Ensure the editor stays focused and the caret remains in the same position
@@ -87,7 +93,7 @@ export class EditorBaseComponent {
     if (parentElement) {
       // Check for bold state (inside <b>)
       this.isBold = parentElement.closest('b') !== null;
-      
+
       // turn off bold if text is deleted
       if (!this.isBold && document.queryCommandState('bold')) {
         document.execCommand('bold', false, '');
@@ -129,9 +135,9 @@ export class EditorBaseComponent {
     else {
       if (previousNode) {
         range.setStart(previousNode, 0);  // Keep the cursor at the same position
-      } 
+      }
     }
-    
+
     range.collapse(true);
 
     const selection = window.getSelection();
@@ -173,6 +179,7 @@ export class EditorBaseComponent {
   checkTextSelection() {
     const editor = document.querySelector('.editor') as HTMLElement;
     this.selectedRange = this.getSelectedPositionAbs();
+    this.editor.setSelectionRange(this.selectedRange);
     const selection = window.getSelection();
     if (selection && selection.toString().length > 0) {
       const parentElement = selection.anchorNode?.parentElement;
@@ -184,7 +191,7 @@ export class EditorBaseComponent {
 
       // Check if the selected range overlaps or is inside any existing commented range
       this.isExistingComment = this.commentBoxes.some(box => this.isSubRange(this.selectedRange, box.selectionRange));
-         
+
       // Get bounding rect to position floating toolbar
       const rect = range.getBoundingClientRect();
       this.toolbarPosition = { top: rect.top - 40, left: rect.left };
@@ -197,58 +204,58 @@ export class EditorBaseComponent {
     }
   }
 
-  getSelectedPositionAbs(): { start: number, end: number } {
+   getSelectedPositionAbs(): { start: number, end: number } {
     let start = 0;
     let end = 0;
     let charCount = 0;
-    
+
     const selection = window.getSelection();
     const editor = document.querySelector('.editor') as HTMLElement;
-  
+
     if (selection?.rangeCount) {
       const range = selection.getRangeAt(0);
-      
+
       const treeWalker = document.createTreeWalker(
         editor,
         NodeFilter.SHOW_TEXT, // Only show text nodes
         null
       );
-  
+
       let node: Text | null;
       while ((node = treeWalker.nextNode() as Text)) {
         const nodeLength = node.textContent?.length || 0;
-  
+
         // If the start of the range is in this node
         if (node === range.startContainer) {
           start = charCount + range.startOffset;
         }
-  
+
         // If the end of the range is in this node
         if (node === range.endContainer) {
           end = charCount + range.endOffset;
           break;
         }
-  
+
         charCount += nodeLength;
       }
     }
-  
+
     return { start, end };
   }
-  
+
 
   // Updated isSubRange method to check based on absolute offsets
   isSubRange(selectedRange: TextRange, existingRange: TextRange): boolean {
-    return (selectedRange.start >= existingRange.start && selectedRange.start <= existingRange.end) || 
+    return (selectedRange.start >= existingRange.start && selectedRange.start <= existingRange.end) ||
            (selectedRange.end >= existingRange.start && selectedRange.end <= existingRange.end);
   }
 
   undo() {
-
+    UndoRedoManager.getInstance().undo();
   }
 
   redo() {
-
+    UndoRedoManager.getInstance().redo();
   }
 
   // Open the comment popup
@@ -260,19 +267,19 @@ export class EditorBaseComponent {
   setCaretAtPosition(editor: HTMLElement, charPos: number) {
     const range = document.createRange();
     const selection = window.getSelection();
-  
+
     // Get the text node and offset within the node for the specific global character position
     const nodeInfo = this.getTextNodeAtPosition(editor, charPos);
-  
+
     if (nodeInfo) {
       // Set the range to collapse at the desired position
       range.setStart(nodeInfo.node, charPos - nodeInfo.startOffset);
       range.collapse(true);  // Collapse the range to a single point (just the cursor)
-  
+
       // Clear existing selections and apply the new range
       selection?.removeAllRanges();
       selection?.addRange(range);
-  
+
       // Ensure the editor is focused
       editor.focus();
     } else {
@@ -282,68 +289,12 @@ export class EditorBaseComponent {
 
   // Save the comment and highlight the selected text
   saveComment() {
-    if (this.newCommentText) {
-      // Add comment to the list
-      let { start, end } = this.selectedRange;
-      this.commentBoxes.push(new CommentBox(
-        start, 
-        end,
-        this.newCommentText
-      ));
-
-      this.commentBoxes.sort((a, b) => a.selectionRange.start - b.selectionRange.start);
-
-
-      // Highlight the commented text
-      this.highlightSelectedText();
-      this.closeCommentPopup();
-
-      this.setCaretAtPosition(document.querySelector('.editor') as HTMLElement, end);
-      // ovde
-    }
+    const commentCommand = new Comment(this.newCommentText);
+    commentCommand.execute();
+    this.closeCommentPopup();
   }
 
-  highlightSelectedText() {
-    const editor = document.querySelector('.editor') as HTMLElement;
-    let range = document.createRange();
 
-    if (this.setRangeNodesForPosition(editor, this.selectedRange,  range)) {
-      const span = document.createElement('span');
-      span.style.backgroundColor = '#f0f0f0';
-      span.style.borderRadius = '4px';
-      span.textContent = range.toString();
-      span.setAttribute('comment', 'true');
-      
-      range.deleteContents();
-      range.insertNode(span); 
-    }
-  }
-
-  // crutch solution
-  // probably useless function
-  moveCaretAfterSpan(span: HTMLElement) {
-    const range = document.createRange();
-    const selection = window.getSelection();
-  
-    // Check if there is a next sibling to place the caret at the start of
-    if (span.nextSibling && span.nextSibling.textContent?.length) {
-      range.setStart(span.nextSibling, 1); // Move caret to the start of the next sibling
-    } else if (span.parentNode) {
-      // If no sibling, move the caret to the end of the parent element
-      const separatorSpan = document.createElement('span');
-      separatorSpan.innerHTML = '&nbsp'; // Use CSS to hide thiskey
-      span.parentNode.insertBefore(separatorSpan, span.nextSibling);
-      range.setStartAfter(separatorSpan);
-    }
-  
-    range.collapse(true);  // Collapse the range to ensure caret placement
-  
-    // Clear any previous selection and set the new range
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
-
-  
   // Close the comment popup
   closeCommentPopup() {
     this.isCommentPopupOpen = false;
@@ -351,12 +302,10 @@ export class EditorBaseComponent {
   }
 
   // Add a reply to a specific comment thread
-  addReply(commentBoxIndex: number) {
-    const commentBox = this.commentBoxes[commentBoxIndex];
-    if (commentBox.newReply.trim() !== '') {
-      commentBox.comments.push(commentBox.newReply);  // Add reply to the comments array
-      commentBox.newReply = '';  // Clear the input field
-    }
+  addReply(commentID: number) {
+    const replyCommand = new Reply(commentID, this.newReply);
+    replyCommand.execute();
+    this.newReply = '';
   }
 
   // Focus on the comment in the panel
@@ -368,8 +317,8 @@ export class EditorBaseComponent {
       if (commentBoxElement) {
         commentBoxElement.scrollIntoView({ behavior: 'smooth' });
       }
-    } 
-    
+    }
+
     this.showFloatingToolbar = false;
   }
   updateFontIndicator() {
@@ -386,12 +335,12 @@ export class EditorBaseComponent {
           if (size >= 2 && size <= 7) {
             if (size != this.scale)
               document.execCommand('fontName', false, size.toString()); // font size changed
-            this.scale = size; 
+            this.scale = size;
             this.fontSize = this.fontSizeMap[size];
           }
           const face = fontTag.getAttribute('face');
           if (face) {
-            if (face !== this.fontFamily) 
+            if (face !== this.fontFamily)
               document.execCommand('fontName', false, face); // font changed
             this.fontFamily = face;
             const fontSelect = document.getElementById('fontSelect') as HTMLSelectElement;
@@ -431,141 +380,24 @@ export class EditorBaseComponent {
   }
 
   closeModal() {
-    const editor = document.querySelector('.editor') as HTMLElement;
     this.isModalOpen = false;
-
-    let range = document.createRange();
-    if (this.setRangeNodesForPosition(editor, this.selectedRange, range)) {
-      range.collapse(false);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      editor.focus();
-    }
-
-    this.foundWords = [];
-    this.foundWordRangeStart = -1;
-    this.searchTerm = '';
-    this.wordToFind = '';
-    this.replacement = '';
-  }
-
-  highlightRange(start: number, end: number) {
-    const editor = document.querySelector('.editor') as HTMLElement;
-    const range = document.createRange();
-
-    if (this.setRangeNodesForPosition(editor, {start: start, end: end}, range)) {
-      const selection = window.getSelection();
-      selection?.removeAllRanges();  // Clear previous selections
-      selection?.addRange(range);  // Highlight the range
-
-      editor.focus();  
-    }
-  }
-
-  isValidSearch(startIndex: number, endIndex: number): boolean {
-
-    if (this.commentBoxes.length == 0) 
-      return true;
-
-    let foundComments = this.commentBoxes.filter(comm => {
-      return (startIndex >= comm.selectionRange.start && startIndex <= comm.selectionRange.end)
-      || (endIndex >= comm.selectionRange.start && endIndex <= comm.selectionRange.end);
-    })
-
-    if (foundComments.length > 1) {
-      return false;
-    }
-
-    if (foundComments.length == 0) {
-      return true;
-    }    
-    const comm = foundComments[0];
-
-    return startIndex >= comm.selectionRange.start && endIndex <= comm.selectionRange.end; 
   }
 
   findNext() {
-    const editor = document.querySelector('.editor') as HTMLElement;
-
-    if (this.searchTerm !== this.wordToFind) {
-      this.foundWords = [];
+    const findCommand = new Find(this.searchTerm);
+    if (!findCommand.execute()) {
+      console.log('No found occurences');
     }
-    this.wordToFind = this.searchTerm;
-    if (!this.foundWords.length) {
-      this.searchManager.set_content(editor.innerText);
-      this.foundWords = Array.from(this.searchManager.find_all(this.wordToFind));
-    }
-    if (this.foundWords.length) {
-      this.foundWords = this.foundWords.filter(startIndex => {
-        return this.isValidSearch(startIndex, startIndex + this.wordToFind.length);
-      });
-
-      if (!this.foundWords.length) {
-        return;
-      }
-      this.foundWordRangeStart = this.foundWords.shift()!;
-      this.foundWords.push(this.foundWordRangeStart);
-
-      this.selectedRange = {start: this.foundWordRangeStart, end: this.foundWordRangeStart + this.wordToFind.length};
-      this.highlightRange(this.selectedRange.start, this.selectedRange.end);
-    }
-
   }
 
   replace() {
-    // For now, don't allow empty replacement word
-    if (!this.replacement.length) {
-      return;
-    }
-    const editor = document.querySelector('.editor') as HTMLElement;
-
-    if (this.searchTerm !== this.wordToFind) {
-      this.foundWords = [];
-    }
-    this.wordToFind = this.searchTerm;
-    if (!this.foundWords.length) {
-      this.searchManager.set_content(editor.innerText);
-      this.foundWords = Array.from(this.searchManager.find_all(this.wordToFind));
-      if (!this.foundWords.length)
-        return;
-    }
-
-    this.foundWords = this.foundWords.filter(startIndex => {
-      return this.isValidSearch(startIndex, startIndex + this.wordToFind.length);
-    });
-
-    if (!this.foundWords.length) {
-      return;
-    }
-
-    if (this.foundWordRangeStart == -1) {
-      this.foundWordRangeStart = this.foundWords.shift()!; // replace the next word that matches searched word
-    } else {
-      this.foundWords.pop(); // replace found word (after click on 'Find next')
-    }
-    
-    this.selectedRange = {start: this.foundWordRangeStart, end: this.foundWordRangeStart + this.replacement.length};
-    
-    const shiftAmount = this.replacement.length - this.wordToFind.length;
-    this.replaceWordAndShiftSpaces(editor, this.selectedRange.start, this.selectedRange.start + this.wordToFind.length, this.replacement);
-
-    this.searchManager.set_content(editor.innerText);
-    this.foundWords.forEach((value, index, array) => {
-      if (array[index] > this.foundWordRangeStart) 
-        array[index] += shiftAmount;  
-    });
-    // ovde
-    this.foundWordRangeStart = -1;
+    const replaceCommand = new Replace(this.searchTerm, this.replacement);
+    replaceCommand.execute();
   }
-  
+
 
   replaceAll() {
-    this.searchManager.set_content(this.content);
-    const updatedContent = this.searchManager.replace_all(this.searchTerm, this.replacement);
-    this.content = updatedContent;  
-
-    this.updateEditor()
+    new ReplaceAll(this.searchTerm, this.replacement).execute();
   }
 
     // Replace word considering both text and HTML elements
@@ -575,7 +407,7 @@ export class EditorBaseComponent {
 
     const comment = this.commentBoxes.filter(comm => {
       return start >= comm.selectionRange.start && end <= comm.selectionRange.end;
-    }) 
+    })
 
     let startIndex = start, endIndex = end;
     if (comment.length > 0) {
@@ -586,7 +418,7 @@ export class EditorBaseComponent {
     if (this.setRangeNodesForPosition(editor, {start: startIndex, end: endIndex}, range)) {
       const shiftAmount = replacement.length - (end - start);
 
-      const containerFragment = range.cloneContents();  
+      const containerFragment = range.cloneContents();
 
       const content = containerFragment.firstElementChild as HTMLElement;
 
@@ -608,9 +440,9 @@ export class EditorBaseComponent {
       }
       range.deleteContents();
       range.insertNode(newNode);
-    
+
       // in case of empty spans (crutch solution)
-      if (comment.length > 0) 
+      if (comment.length > 0)
         editor.innerHTML = editor.innerHTML.replace(/<span\b[^>]*>\s*<\/span>/gi, '');
 
       this.shiftComments(shiftAmount, start, end);
@@ -641,37 +473,6 @@ export class EditorBaseComponent {
       }
     });
   }
-  
-  // Adds spaces after the given node or appends them if no sibling exists
-
-  // Probably useless function
-  addSpacesAfter(node: Node, shiftAmount: number, start: number, end: number) {
-      const spaceText = ' '.repeat(shiftAmount);
-      const spaceNode = document.createTextNode(spaceText);
-  
-      if (node.nextSibling) {
-        // Insert spaces after the node if there's a next sibling
-        node.parentNode?.insertBefore(spaceNode, node.nextSibling);
-      } else {
-          // Append spaces at the end if no sibling exists
-        node.parentNode?.appendChild(spaceNode);
-      }
-      this.shiftComments(shiftAmount, start, end);
-  }
-  
-  // Removes `shiftAmount` spaces from the given text node
-  // Probably useless function
-  removeSpacesFromNode(node: Node, shiftAmount: number, start: number, end: number) {
-      const textContent = node.textContent || '';
-      const spaceCount = (textContent.match(/ +$/)?.[0]?.length || 0); // Find trailing spaces
-  
-      if (spaceCount > 0) {
-          // Remove `shiftAmount` spaces
-        node.textContent = textContent.slice(0, textContent.length - Math.min(shiftAmount, spaceCount));
-        this.shiftComments(shiftAmount, start, end);
-      }
-  }
-
 
   // Change the font family based on user selection
   changeFont(event: Event) {
@@ -685,14 +486,14 @@ export class EditorBaseComponent {
     if (this.scale < 7) {
       this.scale += 1;
     }
-    this.applyFontSize();  
+    this.applyFontSize();
   }
 
   decreaseFontSize() {
     if (this.scale > 2) {
       this.scale -= 1;
     }
-    this.applyFontSize();  
+    this.applyFontSize();
   }
 
   // Apply the correct font size after increasing or decreasing
@@ -725,13 +526,13 @@ export class EditorBaseComponent {
     this.removeAllSubrangeComments(selectedRange);
     const shiftAmount = selectedRange.end - selectedRange.start;
     this.shiftComments(-shiftAmount, selectedRange.start, selectedRange.end);
-  } 
+  }
 
   processCommentDeletion(isBackspace: boolean, isRangeDeleted: boolean, selectedRange: TextRange) {
     if (isRangeDeleted) {
-      this.processSelectionIntersectingComments(selectedRange);    
+      this.processSelectionIntersectingComments(selectedRange);
       return;
-    } 
+    }
     const selection = window.getSelection();
 
     if (selection && selection.rangeCount > 0) {
@@ -743,11 +544,11 @@ export class EditorBaseComponent {
       const siblingSpan = nextSibling && nextSibling?.tagName?.toLowerCase() === 'span' && nextSibling?.hasAttribute('comment');
       // Check if the caret is inside a span with the 'comment' attribute
       if (parentSpan || siblingSpan) {
-        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));          
+        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));
         let spanIndex = allSpans.indexOf(parentElement);
 
         const span = spanIndex < 0 ? nextSibling : parentElement;
-        spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex; 
+        spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex;
         // Check if it's the last character in the span
         const spanContentLength = span.textContent?.length || 0;
 
@@ -755,14 +556,14 @@ export class EditorBaseComponent {
         if (spanContentLength === 1) {
           this.handleSpanDeletion(span, isBackspace);
           this.commentBoxes.splice(spanIndex, 1);
-        } 
+        }
      //   this.shiftComments(-1, this.getCursorOnKeyDown(isBackspace));
         this.shiftComments(-1, selectedRange.start, selectedRange.end, isBackspace);
       }
     }
   }
 
-  
+
   checkCommentAreaChange(isInput: boolean) {
     // check if character is inserted, or just the cursor was moved
     const selection = window.getSelection();
@@ -774,12 +575,12 @@ export class EditorBaseComponent {
     const range = this.getCurrentRange();
     if (parentSpan || siblingSpan) {
       if (isInput) {
-        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));          
+        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));
         let spanIndex = allSpans.indexOf(parentElement);
 
         const span = spanIndex < 0 ? nextSibling : parentElement;
         spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex; // TODO: I OVO SE PONAVLJA, SREDITI
-        
+
         const shouldPreventEdit = range?.startOffset == 0 || range?.startOffset == parentElement.textContent?.length; // borders of comment span
         console.log(range?.startOffset);
         console.log(parentElement.textContent?.length);
@@ -789,13 +590,13 @@ export class EditorBaseComponent {
           const editor = document.querySelector('.editor') as HTMLElement;
           editor.focus();
           this.nearestCommentSpan = parentElement;
-        }     
-      } 
+        }
+      }
     }
   }
 
   isComment(element: HTMLElement | undefined): boolean {
-    if (!element) 
+    if (!element)
       return false;
 
     return element.tagName?.toLowerCase() === 'span' && element.hasAttribute('comment');
@@ -823,27 +624,27 @@ export class EditorBaseComponent {
       const isRangeDeleted = (selectedRange.end - selectedRange.start > 0);
       this.processCommentDeletion(event.key === 'Backspace', isRangeDeleted, selectedRange);
       // ovde
-      // change comments position after delete  
-    } 
+      // change comments position after delete
+    }
     else {
       const noTextKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Shift', 'Control', 'Alt', 'CapsLock'];
       const isInput = !noTextKeys.includes(event.key);
       // check for possible character input that affects commented text, and shift subsequent comments anyway
-      this.checkCommentAreaChange(isInput); 
+      this.checkCommentAreaChange(isInput);
       if (isInput) {
         //this.shiftComments(1, this.getCursorOnKeyDown(false), true);
         const selectedRange = this.getSelectedPositionAbs();
         this.shiftComments(1, selectedRange.start, selectedRange.end, true);
         // ovde
       }
-    } 
+    }
     console.log(this.commentBoxes);
   }
 
   moveCaretOutsideSpan(span: HTMLElement, moveAfter: boolean) {
     const range = document.createRange();
     const selection = window.getSelection();
-  
+
     if (moveAfter) {
       // Move caret after the span
       if (span.nextSibling) {
@@ -855,13 +656,20 @@ export class EditorBaseComponent {
       // Move caret before the span
       range.setStartBefore(span);
     }
-  
+
     range.collapse(true); // Collapse the range to set the caret position
     selection?.removeAllRanges();
     selection?.addRange(range);
   }
   // Attach listeners for caret position changes
   async ngOnInit() {
+    this.editor = Editor.getInstance();
+    this.commentHandler = CommentHandler.getInstance();
+    this.commentHandler.subscribeForCommentThreads((comments: CommentContainer[]) => {
+      this.commentContainers = comments;
+      console.log(this.commentContainers);
+    })
+
     const editor = document.querySelector('.editor') as HTMLElement;
 
     this.renderer.listen(editor, 'keyup', () => {
@@ -882,13 +690,12 @@ export class EditorBaseComponent {
 
     try {
       const wasmModule = await import('../../assets/pkg/editor_wasm.js');
-      
+
       // Initialize the Wasm module by loading the .wasm file
       const wasm = await wasmModule.default({
         module_or_path: 'assets/pkg/editor_wasm_bg.wasm'
       });
-      
-      this.searchManager = SearchManager.new(this.content);
+
     } catch (err) {
       console.error("Failed to load Wasm module", err);
     }
