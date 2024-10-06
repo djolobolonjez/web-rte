@@ -1,95 +1,348 @@
-<div class="editor-base-container">
-  <!-- Header -->
-  <div class="header"></div>
+<head>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
 
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <!-- Font dropdown -->
-    <label for="fontSelect">Font:</label>
-    <select id="fontSelect" (change)="changeFont($event)">
-      <option value="Arial">Arial</option>
-      <option value="Times New Roman">Times New Roman</option>
-      <option value="Courier New">Courier New</option>
-    </select>
-
-    <!-- Font size controls -->
-    <label>Font Size:</label>
-    <button (click)="decreaseFontSize()">-</button>
-    <span>{{ fontSize }}</span>
-    <button (click)="increaseFontSize()">+</button>
-
-    <!-- Bold and Italic buttons -->
-    <button (click)="toggleBold()" [class.active]="isBold">Bold</button>
-    <button (click)="toggleItalic()" [class.active]="isItalic">Italic</button>
-
-    <!-- Undo and Redo buttons -->
-    <button (click)="undo()">Undo</button>
-    <button (click)="redo()">Redo</button>
-
-    <!-- Find and Replace button -->
-    <button (click)="openFindReplaceModal()">Find and Replace</button>
-  </div>
-
-  <!-- Floating toolbar for 'Add Comment' or 'Go to Comment' -->
-  <div class="floating-toolbar" *ngIf="showFloatingToolbar" [ngStyle]="{ top: toolbarPosition.top + 'px', left: toolbarPosition.left + 'px' }">
-    <button *ngIf="!isExistingComment" (click)="openCommentPopup()">Add Comment</button>
-    <button *ngIf="isExistingComment" (click)="goToComment()">Go to Comment</button>
-  </div>
-
-  <!-- Editor and comments container -->
-  <div class="editor-container">
-    <!-- Editable Content -->
-    <div class="editor" contenteditable="true" (input)="onInput($event)" (keydown)="onKeyDown($event)">
-      <!-- The text content will be editable here -->
+<div class="header">
+  <div class="navbar bg-base-100 shadow-lg">
+    <!-- Left Section: Hamburger Menu with Dropdown -->
+    <div class="navbar-start">
     </div>
 
-    <!-- Comments panel (appears only when there are comments) -->
-    <div class="comments-panel" *ngIf="commentContainers.length > 0">
-      <div *ngFor="let comm of commentContainers; let i = index" class="comment-box" [id]="'comment-' + i">
-        <ul class="comment-thread">
-          <li *ngFor="let reply of comm.getReplies()">
-            <div class="comment-author">{{ reply.getAuthor() }}</div>
-            <div class="comment-text">{{ reply.getText() }}</div>
-            <div class="comment-date">{{ reply.getLastModified() }}</div>
-          </li>
+    <!-- Center Section: Title -->
+    <div class="navbar-center">
+      <span class="btn btn-ghost normal-case text-xl">Web RTE</span>
+    </div>
+
+    <!-- Right Section: User Menu Button with Dropdown -->
+    <div class="navbar-end">
+      <div class="dropdown dropdown-end">
+        <label tabindex="0" class="btn btn-square btn-ghost">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="inline-block h-5 w-5 stroke-current">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path>
+          </svg>
+        </label>
+        <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
+          <li *ngIf="isGuestState"><a class="btn btn-ghost" (click)="openLogin()">Login</a></li>
+          <li *ngIf="isGuestState"><a class="btn btn-ghost" (click)="openRegister()">Register</a></li>
+          <li *ngIf="!isGuestState"><a class="btn btn-ghost" (click)="toggleDocuments()">Files</a></li>
+          <li *ngIf="!isGuestState"><a class="btn btn-ghost" (click)="logout()">Logout</a></li>
         </ul>
-        <input type="text" [(ngModel)]="newReply" placeholder="Add a reply..." class="reply-input">
-        <button class="reply-button" (click)="addReply(comm.getID())">Reply</button>
       </div>
-    </div>
-  </div>
-
-  <!-- Find and Replace Modal -->
-  <div class="modal" *ngIf="isModalOpen">
-    <div class="modal-content">
-      <h2>Find and Replace</h2>
-
-      <!-- Input for Find -->
-      <label for="searchTerm">Find:</label>
-      <input type="text" id="searchTerm" [(ngModel)]="searchTerm">
-
-      <!-- Input for Replace -->
-      <label for="replacement">Replace with:</label>
-      <input type="text" id="replacement" [(ngModel)]="replacement">
-
-      <!-- Action Buttons -->
-      <div class="button-container">
-        <button (click)="findNext()">Find Next</button>
-        <button (click)="replace()">Replace</button>
-        <button (click)="replaceAll()">Replace All</button>
-      </div>
-
-      <button class="close-button" (click)="closeModal()">Close</button>
-    </div>
-  </div>
-
-  <!-- Comment Popup -->
-  <div class="comment-popup" *ngIf="isCommentPopupOpen">
-    <div class="modal-content">
-      <h3>Enter Comment</h3>
-      <textarea [(ngModel)]="newCommentText" placeholder="Write your comment here..."></textarea>
-      <button (click)="saveComment()">Save Comment</button>
-      <button (click)="closeCommentPopup()">Cancel</button>
     </div>
   </div>
 </div>
+
+<div id="login-modal" class="modal">
+  <div class="modal-box">
+    <h2 class="font-bold text-lg">Login</h2>
+    <form (submit)="login()">
+      <div class="form-control my-4">
+        <label for="username" class="label">
+          <span class="label-text">Username:</span>
+        </label>
+        <input type="text" id="username" [(ngModel)]="loginUsername" name="username" class="input input-bordered" required>
+      </div>
+      <div class="form-control my-4">
+        <label for="password" class="label">
+          <span class="label-text">Password:</span>
+        </label>
+        <input type="password" id="password" [(ngModel)]="loginPassword" name="password" class="input input-bordered" required>
+      </div>
+      <button class="btn btn-primary w-full" type="submit">Login</button>
+    </form>
+    <div *ngIf="loginErrorMessage" id="login-error" class="alert alert-error mt-4 hidden">
+      <span>{{loginErrorMessage}}</span>
+    </div>
+    <div class="modal-action">
+      <button class="btn btn-sm" (click)="closeLogin()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Registration Modal -->
+<div id="register-modal" class="modal">
+  <div class="modal-box">
+    <h2 class="font-bold text-lg">Register</h2>
+    <form onsubmit="event.preventDefault(); register()">
+      <div class="form-control my-4">
+        <label for="register-email" class="label">
+          <span class="label-text">Email:</span>
+        </label>
+        <input type="email" id="register-email" class="input input-bordered" required>
+      </div>
+      <div class="form-control my-4">
+        <label for="register-username" class="label">
+          <span class="label-text">Username:</span>
+        </label>
+        <input type="text" id="register-username" class="input input-bordered" required>
+      </div>
+      <div class="form-control my-4">
+        <label for="register-password" class="label">
+          <span class="label-text">Password:</span>
+        </label>
+        <input type="password" id="register-password" class="input input-bordered" required>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">Register</button>
+    </form>
+    <div class="modal-action">
+      <button class="btn btn-sm" (click)="closeRegister()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div role="tablist" class="tabs tabs-bordered">
+  <div class="floating-toolbar" [ngClass]="{'show': showToolbar}" [ngStyle]="toolbarPosition">
+    <div class="flex bg-gray-200 rounded-md shadow-md">
+      <button (click)="toggleBold()" class="bg-white rounded-l-md p-2 hover:bg-gray-200" aria-label="Bold" [class.active]="isBold">
+        <i class="fas fa-bold"></i>
+      </button>
+      <button (click)="toggleItalic()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Italic" [class.active]="isItalic">
+        <i class="fas fa-italic"></i>
+      </button>
+      <button (click)="toggleUnderline()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Underline" [class.active]="isUnderline">
+        <i class="fas fa-underline"></i>
+      </button>
+      <button *ngIf="!isExistingComment" (click)="openCommentPopup()" class="bg-white rounded-r-md p-2 focus:outline-none hover:bg-gray-200">
+        New comment
+      </button>
+      <button *ngIf="isExistingComment" (click)="goToComment()" class="bg-white rounded-r-md p-2 focus:outline-none hover:bg-gray-200">
+        Go to comment
+      </button>
+    </div>
+  </div>
+
+
+    <div class="editor-base-container">
+
+      <!-- Modal -->
+    <div class="modal" [ngClass]="{'modal-open': isShareOpen}">
+      <div class="modal-box relative">
+        <h2 class="text-lg font-semibold mb-4">Share Document</h2>
+
+        <!-- Input for the share link or message -->
+        <div class="form-control mb-4">
+          <div class="join">
+            <input type="text" placeholder="Enter email address..." [(ngModel)]="shareAddress" class="input input-bordered">
+            <button class="btn btn-secondary" (click)="share()">
+              <i class="fa-solid fa-share"></i> <!-- Share icon (FontAwesome) -->
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="modal-action">
+          <button class="btn btn-outline" (click)="closeShare()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" [ngClass]="{'modal-open': isSaveOpen}">
+      <div class="modal-box relative">
+        <h2 class="text-lg font-semibold mb-4">Save Document</h2>
+
+        <!-- Input for the share link or message -->
+        <div class="form-control mb-4">
+          <div class="join">
+            <input type="text" placeholder="Document name" [(ngModel)]="newDocname" class="input input-bordered">
+            <button class="btn btn-secondary" (click)="saveDocument()">
+              Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="modal-action">
+          <button class="btn btn-outline" (click)="closeSave()">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" [ngClass]="{'modal-open': isCreateOpen}">
+      <div class="modal-box relative">
+        <h2 class="text-lg font-semibold mb-4">Save Document</h2>
+
+        <!-- Input for the share link or message -->
+        <div class="form-control mb-4">
+          <div class="join">
+            <button class="btn btn-secondary" (click)="saveAndCreate()">Save</button>
+            <button class="btn btn-secondary" (click)="closeAndCreate()">
+              Leave
+            </button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="modal-action">
+          <button class="btn btn-outline" (click)="closeCreate()">Close</button>
+        </div>
+      </div>
+    </div>
+
+      <div class="files-modal" *ngIf="showDocuments">
+        <div class="files-content">
+          <h2 class="text-xl font-semibold mb-4">Select a File</h2>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div *ngFor="let file of files" class="flex flex-col items-center cursor-pointer hover:bg-gray-100 p-2 rounded transition duration-200">
+              <a class="btn btn-ghost" (click)="openFile(file)">
+                <i class="fa-solid fa-file"></i>
+                {{file}}
+              </a>
+            </div>
+          </div>
+
+          <button class="btn-close mt-4" (click)="toggleDocuments()">Close</button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="editor-toolbar-container">
+        <div class="toolbar flex items-center space-x-2">
+          <!-- Font dropdown -->
+          <div class="relative">
+            <select id="fontSelect" (change)="changeFont($event)" class="ml-2 bg-white border border-gray-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="Arial">Arial</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+            </select>
+          </div>
+
+          <div class="relative">
+            <select id="fontSizeSelect" class="ml-2 bg-white border border-gray-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500" (change)="changeFontSize($event)">
+              <option value="12">12</option>
+              <option value="14" selected>14</option>
+              <option value="16">16</option>
+              <option value="18">18</option>
+              <option value="20">20</option>
+              <option value="22">22</option>
+            </select>
+          </div>
+
+          <!-- Bold and Italic buttons -->
+          <div class="flex space-x-0 bg-gray-200 rounded-md shadow-md">
+            <button (click)="toggleBold()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Bold" [class.active]="isBold">
+              <i class="fas fa-bold"></i>
+            </button>
+            <button (click)="toggleItalic()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Italic" [class.active]="isItalic">
+              <i class="fas fa-italic"></i>
+            </button>
+            <button (click)="toggleUnderline()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Underline" [class.active]="isUnderline">
+              <i class="fas fa-underline"></i>
+            </button>
+          </div>
+
+          <!-- Undo and narrow dropdown for extra options -->
+          <div class="flex items-center space-x-0">
+            <button (click)="undo()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Undo">
+              <i class="fas fa-undo"></i>
+            </button>
+            <div class="dropdown dropdown-hover">
+              <div tabindex="0" role="select" class="p-2 bg-white focus:outline-none hover:bg-gray-200">
+                <i class="fas fa-angle-down"></i>
+              </div>
+              <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-20 p-2 shadow-lg">
+                <li><a href="#">Option 1</a></li>
+                <li><a href="#">Option 2</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Redo button -->
+          <button (click)="redo()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Redo">
+            <i class="fas fa-redo"></i>
+          </button>
+
+          <!-- Find and Replace button -->
+          <button (click)="openFindReplaceModal()" class="bg-white p-2 focus:outline-none hover:bg-gray-200">
+            Find & Replace
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+          <button (click)="promptSave()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Save">
+            <i class="fa-regular fa-floppy-disk"></i>
+          </button>
+          <button (click)="createDocument()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Create">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+          <button (click)="shareDocument()" class="bg-white p-2 focus:outline-none hover:bg-gray-200" aria-label="Share">
+            <i class="fa-solid fa-share-nodes"></i>
+          </button>
+        </div>
+      </div>
+      <div class="editor-container">
+        <!-- Editable Content -->
+        <div class="editor" contenteditable="true">
+          <!-- The text content will be editable here -->
+        </div>
+
+        <!-- Comments panel (appears only when there are comments) -->
+        <div class="comments-panel" *ngIf="commentContainers.length > 0">
+          <div *ngFor="let comm of commentContainers; let i = index" class="comment-box" [id]="'comment-' + i">
+            <ul class="comment-thread">
+              <li *ngFor="let reply of comm.getReplies()">
+                <div class="comment-author">{{ reply.getAuthor() }}</div>
+                <div class="comment-text">{{ reply.getText() }}</div>
+                <div class="comment-date">{{ reply.getLastModified() }}</div>
+              </li>
+            </ul>
+            <input type="text" [(ngModel)]="newReply" placeholder="Add a reply..." class="reply-input">
+            <button class="reply-button" (click)="addReply(comm.getID())">Reply</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Find and Replace Modal -->
+      <div class="modal-custom" *ngIf="isModalOpen">
+        <div class="modal-content">
+          <h2>Find and Replace</h2>
+
+          <!-- Input for Find -->
+          <div class="mb-4">
+            <label for="searchTerm" class="block mb-1 text-sm font-medium text-gray-700">Find:</label>
+            <input type="text" id="searchTerm" class="input input-bordered w-full" [(ngModel)]="searchTerm">
+          </div>
+
+          <!-- Input for Replace -->
+          <div class="mb-4">
+            <label for="replacement" class="block mb-1 text-sm font-medium text-gray-700">Replace with:</label>
+            <input type="text" id="replacement" class="input input-bordered w-full" [(ngModel)]="replacement">
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="button-container">
+            <button class="btn btn-primary" (click)="findNext()">Find Next</button>
+            <button class="btn btn-secondary" (click)="replace()">Replace</button>
+            <button class="btn btn-outline" (click)="replaceAll()">Replace All</button>
+          </div>
+
+          <button class="btn-close mt-4" (click)="closeModal()">Close</button>
+        </div>
+      </div>
+
+
+
+      <!-- Comment Popup -->
+      <!-- Comment Popup -->
+    <div class="comment-popup" *ngIf="isCommentPopupOpen">
+      <div class="modal-content">
+        <h3 class="text-lg font-bold mb-4">Enter Comment</h3>
+        <textarea class="input input-bordered w-full mb-4" [(ngModel)]="newCommentText" placeholder="Write your comment here..."></textarea>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-primary btn-sm" (click)="saveComment()">Save Comment</button>
+          <button class="btn btn-secondary btn-sm" (click)="closeCommentPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    </div>
+  </div>

@@ -1,23 +1,108 @@
 .editor-base-container {
   display: flex;
+  background-color: #ffedb0;
   flex-direction: column;
-  height: 100vh; /* Full height */
+  align-items: center;
+  height: auto; /* Full height */
+}
+
+.editor-toolbar-container {
+  width: 52%; /* Same width as contenteditable */
+  margin-bottom: 10px; /* Add a small gap between toolbar and contenteditable */
 }
 
 .header {
-  height: 50px;
-  background-color: #f1f1f1;
+  height: 70px;
+  background-color: #ffffff;
   border-bottom: 1px solid #ccc;
 }
 
 .toolbar {
-  padding: 10px;
-  background-color: #f9f9f9;
-  border-bottom: 1px solid #ccc;
+  background-color: #ffffff;
   display: flex;
   align-items: center;
+  border-radius: 12px;
   gap: 10px;
+  margin-bottom: 2px;
+  margin-top: 10px;
 }
+
+.toolbar button {
+  background-color: white; /* Same color as toolbar */
+  border: none; /* Remove borders */
+  padding: 10px;
+  cursor: pointer;
+}
+
+.toolbar button:hover {
+  background-color: #f4f3f3; /* Light hover effect */
+}
+
+.toolbar button.active {
+  background-color: #d4d4d4; /* A different shade to indicate active state */
+}
+
+
+.floating-toolbar {
+  position: fixed;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  transform: translateY(-100%);
+  z-index: 1000;
+}
+
+.floating-toolbar.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-110%);
+}
+
+.toolbar-button {
+  background-color: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  margin: 0 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.toolbar-button:hover {
+  background-color: #f0f0f0;
+}
+
+.toolbar-button i {
+  font-size: 18px;
+  color: #333333;
+}
+
+.content-area {
+  padding: 20px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  margin-top: 20px;
+  min-height: 200px;
+}
+
+@media (max-width: 768px) {
+  .floating-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 90%;
+    max-width: 300px;
+  }
+
+  .toolbar-button {
+    margin: 4px;
+  }
+}
+
 
 button {
   padding: 5px 10px;
@@ -51,111 +136,265 @@ button.active {
 }
 
 .editor-container {
-  display: inline-block;
-  flex-grow: 1;
-  justify-content: center; /* Center the editor horizontally */
-  align-items: center; /* Center the editor vertically */
-  background-color: #f0f0f0;
-  height: calc(100vh - 110px); /* Take full height minus header and toolbar */
+  width: 100vh;
+  height: 100vh; /* Take full height minus toolbar */
   padding: 20px;
-  position: relative;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  background-color: #ffffff;
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .editor {
-  white-space: pre-wrap;
-  width: 50%; /* Editor takes 50% of the viewport width */
-  height: 100%; /* Editor takes the remaining height */
-  padding: 20px;
-  border: 1px solid #ccc;
-  background-color: #fff;
-  font-family: Arial, sans-serif;
-  font-size: 16px;
-  overflow-y: auto;
-  box-sizing: border-box; /* Ensures padding and border are included in the width and height */
-  margin-right: auto; /* Push the editor away from the right */
-  margin-left: 25%; /* Offset to center the editor */
+  white-space: pre-wrap;             /* Preserve whitespace and line breaks */
+  width: 100%;                       /* Full width of the container */
+  min-height: 200px;                 /* Minimum height for visibility */
+  max-height: 70vh;                  /* Max height to control overflow */
+  padding: 20px;                     /* Padding for better look */
+  border: none;                      /* No border */
+  background-color: #ffffff;         /* Background color for contenteditable */
+  outline: none;                     /* Remove focus outline */
+  overflow-y: auto;                  /* Enable vertical scrolling */
+  box-sizing: border-box;            /* Include padding and border in calculations */
+}
+
+.highlight {
+  border: 2px solid #3b82f6; /* Blue border to highlight */
+  background-color: rgba(59, 130, 246, 0.1); /* Light blue background for highlight */
+  transition: background-color 0.3s ease, border 0.3s ease; /* Smooth transition for highlight */
 }
 
 .comments-panel {
   position: absolute;
   right: 2%; /* Position the comments panel on the right */
-  top: 0;
-  height: 100%; /* Match the height of the editor */
+  top: 20%;
+  height: auto; /* Match the height of the editor */
   width: 20%; /* Comments panel takes 20% of the viewport width */
   padding: 10px;
-  background-color: #f1f1f1;
+  background-color: transparent;
   overflow-y: auto;
 }
-
 .comment-box {
-  background-color: #fff;
-  padding: 10px;
-  margin-bottom: 10px;
-  border: 1px solid #ccc;
+  background-color: #f9fafb;      /* Light gray background */
+  border: 1px solid #e5e7eb;      /* Light border color */
+  border-radius: 8px;             /* Rounded corners */
+  padding: 10px;                   /* Inner padding for comfort */
+  margin: 10px 0;                 /* Vertical spacing between comment boxes */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+  transition: transform 0.2s;     /* Smooth transition for hover effects */
 }
 
-.comment-thread {
-  list-style-type: none;
-  padding: 0;
-  margin-top: 10px;
+.comment-box:hover {
+  transform: scale(1.02);         /* Slightly enlarge on hover */
 }
 
-.comment-thread li {
-  margin-bottom: 10px;
-  padding: 10px;
-  border: 1px solid #ccc;
-  background-color: #fff;
-  border-radius: 4px;
-}
-
-/* Author styling */
 .comment-author {
-  font-weight: bold;
-  margin-bottom: 5px;
+  font-weight: bold;               /* Make the author's name bold */
+  color: #374151;                  /* Dark gray for author name */
+  margin-bottom: 5px;              /* Spacing below author name */
 }
 
-/* Comment text styling */
 .comment-text {
-  margin-bottom: 10px;
+  color: #4b5563;                  /* Medium gray for comment text */
+  margin-bottom: 5px;              /* Spacing below comment text */
 }
 
-/* Date styling */
 .comment-date {
-  font-size: 12px;
-  color: #888; /* Light grey color */
-  margin-top: 5px;
+  font-size: 0.85em;               /* Smaller font size for date */
+  color: #9ca3af;                  /* Light gray for date */
 }
 
 .reply-input {
-  width: 100%;
-  padding: 3px;
-  right: 1%;
-  margin-top: 5px;
-  border: 1px solid #ccc;
+  width: calc(100% - 20px);        /* Full width minus padding */
+  padding: 8px;                    /* Padding for input */
+  border: 1px solid #e5e7eb;       /* Light border */
+  border-radius: 4px;              /* Rounded corners */
+  margin-top: 10px;                /* Spacing above input */
+  background-color: #ffffff;       /* White background for input */
+  color: #374151;                  /* Dark text for input */
 }
 
 .reply-button {
-  margin-top: 5px;
+  background-color: #98b9ee;       /* Blue background for button */
+  color: white;                    /* White text color */
+  border: none;                    /* No border */
+  border-radius: 4px;              /* Rounded corners */
+  padding: 8px 12px;               /* Padding for button */
+  cursor: pointer;                 /* Pointer cursor on hover */
+  margin-top: 5px;                 /* Spacing above button */
+  transition: background-color 0.2s; /* Transition for hover effect */
 }
 
-.modal {
+.reply-button:hover {
+  background-color: #2563eb;       /* Darker blue on hover */
+}
+
+
+.modal-custom {
   display: block;
+  position: absolute;
+  top: 50%;
+  right: calc(50% + 350px); /* Shift the modal 300px to the right of the center */
+  transform: translateY(-50%);
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+
+.modal-content {
+  background-color: rgb(221, 219, 219);
+  padding: 20px;
+  width: 300px; /* You can adjust this if needed */
+  border-radius: 1px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.files-modal {
+  display: block;
+  position: fixed; /* Use fixed positioning to cover the whole screen */
+  top: 0; /* Start from the top of the viewport */
+  left: 0; /* Start from the left of the viewport */
+  width: 100%; /* Full width */
+  height: 100%; /* Full height */
+  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  z-index: 1000; /* Ensure modal is above other content */
+  justify-content: center; /* Center modal content */
+  align-items: center; /* Center modal content vertically */
+  display: flex; /* Flexbox for centering */
+}
+
+.files-content {
+  background-color: #ffffff; /* White background */
+  padding: 20px;
+  width: 80%; /* Responsive width */
+  max-width: 600px; /* Maximum width */
+  border-radius: 8px; /* Rounded corners */
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); /* Shadow effect */
+  text-align: center; /* Center text */
+}
+
+.input {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  border-color: #007bff;
+  outline: none;
+}
+
+/* Comment Popup */
+.comment-popup {
+  display: flex;
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5); /* Adds a semi-transparent background */
+  z-index: 1000; /* Ensure it's above all other elements */
 }
 
-.modal-content {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: white;
+.comment-popup .modal-content {
+  background-color: #f5f5f5; /* Light background for contrast */
   padding: 20px;
-  width: 300px;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 100%;
+}
+
+
+.mt-4 {
+  margin-top: 1rem;
+}
+
+.mb-4 {
+  margin-bottom: 1rem;
+}
+
+label {
+  color: #555;
+  margin-bottom: 5px;
+}
+
+h2 {
+  color: #333;
+  margin-bottom: 15px;
+}
+
+.btn-close {
+  background-color: transparent;
+  color: #6c757d;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.btn-close:hover {
+  background-color: #f8f9fa;
+}
+
+.btn-primary {
+  background-color: #6bb0fb;
+  color: white;
+  border: none;
+}
+
+.btn-primary:hover {
+  background-color: #2f89ea;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: #6c757d;
+  border: 1px solid #6c757d;
+}
+
+.btn-outline:hover {
+  background-color: #e9ecef;
+}
+
+.btn {
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.button-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px; /* Adds space between buttons */
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background for emphasis */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000; /* Ensure it appears on top */
 }

@@ -55,7 +55,6 @@ export class UndoRedoManager {
 
   public redo() {
     const undoableCommand = this.redoStack.pop();
-    console.log(this.redoStack)
 
     if (undoableCommand) {
       undoableCommand.redo();

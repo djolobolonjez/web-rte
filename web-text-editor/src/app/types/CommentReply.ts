@@ -22,10 +22,10 @@ export class CommentReply {
     return `${month} ${day}, ${year}`;
   }
 
-  public constructor(author: string, text: string) {
+  public constructor(author: string, text: string, lastModified?: string) {
     this.author = author;
     this.text = text;
-    this.lastModified = this.getCurrentDateAsString();
+    this.lastModified = lastModified || this.getCurrentDateAsString();
     this.id = CommentReply.ID++;
   }
 

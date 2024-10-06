@@ -33,6 +33,10 @@ impl SearchManager {
         self.content.clone()
     }
 
+    pub fn find_all(&self, search_term: &str) -> Vec<usize> {
+        return self.content.match_indices(search_term).map(|pair| pair.0).collect();
+    }
+
     pub fn find_next(&mut self, search_term: &str) -> Option<usize> {
 
         if self.found_indices.is_empty() || search_term != self.word_to_find {

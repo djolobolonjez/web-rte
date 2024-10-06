@@ -1,5 +1,9 @@
 import { ICommand } from "../../api/commands/command";
+import { Typing } from "../../impl/commands/typing";
+import { CommentHandler } from "../../impl/CommentHandler";
+import { StyleHandler } from "../../impl/StyleHandler";
 import { TextRange } from "../../types/comment.box";
+import { TypingAction } from "../../types/TypingAction";
 import { IReceiver } from "../interfaces/receiver";
 
 export class Editor implements IReceiver {
@@ -11,9 +15,19 @@ export class Editor implements IReceiver {
 
   private lastCommand: ICommand;
 
+  private styleHandler: StyleHandler;
+
+  private cursorSurroundingElement: HTMLElement;
+
   private constructor() {
     this.contentEditableElement = document.querySelector('.editor') as HTMLElement;
-    console.log(this.contentEditableElement);
+    this.styleHandler = StyleHandler.getInstance();
+  }
+
+  public listenDOMEvents() {
+    this.contentEditableElement.addEventListener('keyup', this.onKeyup.bind(this));
+    this.contentEditableElement.addEventListener('keydown', this.onKeydown.bind(this));
+    this.contentEditableElement.addEventListener('mouseup', this.onMouseup.bind(this));
   }
 
   public getLastCommand(): ICommand {
@@ -28,16 +42,22 @@ export class Editor implements IReceiver {
     return this.contentEditableElement.innerHTML;
   }
 
-  public updateContent(content: string) {
-    this.contentEditableElement.innerHTML = content;
-  }
-
   public setSelectionRange(selectedRange: TextRange): void {
     this.selectedRange = selectedRange;
   }
 
+  public setRawContent(content: string): void {
+    this.contentEditableElement.innerHTML = content;
+  }
+
   public getPreviousRange(): TextRange {
     return this.selectedRange;
+  }
+
+  public clear() {
+    this.setRawContent('');
+    this.setSelectionRange({start: 0, end: 0});
+    this.setLastCommand(null);
   }
 
   public static getInstance() {
@@ -56,9 +76,137 @@ export class Editor implements IReceiver {
     this.contentEditableElement.focus();
   }
 
+  private onKeyup(event: KeyboardEvent): void {
+    this.checkTextState();
+    this.cleanUpElements();
+  }
+
+  private onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      const typingCommand = new Typing(TypingAction.Enter);
+      typingCommand.execute();
+      event.preventDefault();
+    }
+    else if (event.key === 'Backspace' || event.key === 'Delete') {
+      const action = event.key === 'Backspace' ? TypingAction.Backspace : TypingAction.Delete;
+      const typingCommand = new Typing(action);
+      typingCommand.execute();
+    }
+    else {
+
+      const noTextKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Shift', 'Control', 'Alt', 'CapsLock'];
+      const isInput = !noTextKeys.includes(event.key);
+      this.checkCommentAreaChange(isInput);
+      if (isInput) {
+        const typingCommand = new Typing(TypingAction.Other, event.key);
+        typingCommand.execute();
+      }
+    }
+  }
+
+  isComment(element: HTMLElement | undefined): boolean {
+    if (!element)
+      return false;
+
+    return element.tagName?.toLowerCase() == 'span' && element.hasAttribute('comment');
+  }
+
+
+
+  private onMouseup(event: MouseEvent): void {
+    this.checkTextState();
+  }
+
+  private isCursorInsideComment() {
+    console.log('mmh');
+    console.log(this.cursorSurroundingElement);
+
+    return this.cursorSurroundingElement.tagName?.toLowerCase() == 'span' && this.cursorSurroundingElement.hasAttribute('comment');
+  }
+
+  private checkTextState() {
+    const selection = window.getSelection();
+    const parentElement = selection.anchorNode.parentElement;
+    this.setSelectionRange(this.getSelectedPositionAbs());
+    if (this.selectedRange.end > this.selectedRange.start) {
+      CommentHandler.getInstance().notifyCommentSelection(this.selectedRange);
+    }
+    if (parentElement) {
+      // Check for bold state (inside <b>)
+      const boldState = this.styleHandler.getBold();
+      const isBold = parentElement.closest('b') !== null;
+
+      // turn off bold if text is deleted
+      if (!isBold && document.queryCommandState('bold')) {
+        document.execCommand('bold', false, '');
+      }
+
+      if (isBold != boldState) {
+        this.styleHandler.updateBoldState(isBold);
+      }
+
+      // Check for italic state (inside <i>)
+      const italicState = this.styleHandler.getItalic();
+      const isItalic = parentElement.closest('i') !== null;
+
+      // turn off italic if text is deleted
+      if (!isItalic && document.queryCommandState('italic')) {
+        document.execCommand('italic', false, '');
+      }
+
+      if (isItalic != italicState) {
+        this.styleHandler.updateItalicState(isItalic);
+      }
+
+      const underlineState = this.styleHandler.getUnderline();
+      const isUnderline = parentElement.closest('u') !== null;
+
+      if (!isUnderline && document.queryCommandState('underline')) {
+        document.execCommand('underline', false, '');
+      }
+
+      if (isUnderline != underlineState) {
+        this.styleHandler.updateUnderlineState(isUnderline);
+      }
+      if (this.cursorSurroundingElement) {
+
+        // writing after or before comment (you can only write inside it, or use find/replace dialog)
+        if (this.isCursorInsideComment()) {
+          console.log(this.cursorSurroundingElement);
+          this.cursorSurroundingElement.setAttribute('contenteditable', 'true');
+          this.cursorSurroundingElement = null;
+        }
+      }
+    } else {
+      this.styleHandler.updateBoldState(false);
+      this.styleHandler.updateItalicState(false);
+      this.styleHandler.updateUnderlineState(false);
+    }
+  }
+
   public getSelectedRange(): Range | undefined {
     const selection = window.getSelection();
     return selection.getRangeAt(0);
+  }
+
+  private getElementOffset(range: Range): number {
+    let charCount = 0;
+
+    const treeWalker = document.createTreeWalker(
+      range.commonAncestorContainer,
+      NodeFilter.SHOW_TEXT, // Only show text nodes
+      null
+    );
+
+    let node;
+    while ((node = treeWalker.nextNode())) {
+      if (node === range.startContainer) {
+        return charCount + range.startOffset;
+      }
+      charCount += node.textContent.length || 0;
+    }
+
+    return charCount;
   }
 
   public getSelectedPositionAbs(): TextRange {
@@ -67,6 +215,17 @@ export class Editor implements IReceiver {
     let charCount = 0;
 
     const range = this.getSelectedRange();
+
+    const parent = range.commonAncestorContainer;
+    if (parent && parent.nodeType === Node.ELEMENT_NODE) {
+      parent.normalize();
+    }
+    // if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
+    //   console.log('ovo sranje');
+    //   start = this.getElementOffset(range);
+    //   end = start + window.getSelection().toString().length;
+    //   return {start, end};
+    // }
 
     const treeWalker = document.createTreeWalker(
       this.contentEditableElement,
@@ -138,25 +297,49 @@ export class Editor implements IReceiver {
     return true;
   }
 
+  public cleanUpElements() {
+    function removeEmptyTags(node: Node) {
+      // Traverse the children of the element
+      Array.from(node.childNodes).forEach(child => {
+        // If the child is an element, check its contents recursively
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          removeEmptyTags(child);
+          if (isEmptyElement(child)) {
+            child.parentNode.removeChild(child);
+          }
+        }
+      });
+    }
+
+    // Check if an element is empty (no child nodes and no text content)
+    function isEmptyElement(element) {
+      return element.nodeType === Node.ELEMENT_NODE &&
+             element.children.length === 0 &&
+             element.textContent.trim() === '';
+    }
+    removeEmptyTags(this.contentEditableElement);
+  }
+
   public selectRange(selectedRange: TextRange) {
     const range = document.createRange();
 
     if (this.setRangeNodesForPosition(selectedRange, range)) {
       const selection = window.getSelection();
-      selection?.removeAllRanges();  // Clear previous selections
-      selection?.addRange(range);  // Highlight the range
+      selection.removeAllRanges();  // Clear previous selections
+      selection.addRange(range);  // Highlight the range
     }
   }
 
   public replaceSelectedContent(selectedRange: TextRange, replacement: string): void {
     const range = document.createRange();
+    console.log(selectedRange);
     if (this.setRangeNodesForPosition(selectedRange, range)) {
       const containterFragment = range.cloneContents();
       const content = containterFragment.firstElementChild as HTMLElement;
 
       let newNode: Node | null;
       if (content) {
-        // treba da se prilagodi komentarima
+        // TODO: treba da se prilagodi komentarima da se ne bi sav tekst obrisao vrv?
         content.textContent = replacement;
         newNode = content;
       } else {
@@ -166,6 +349,21 @@ export class Editor implements IReceiver {
       range.deleteContents();
       range.insertNode(newNode);
     }
+  }
+
+  public cleanUpComments(): number[] {
+    let indices = [];
+    console.log(this.contentEditableElement.querySelectorAll('span'));
+    const spans = Array.from(this.contentEditableElement.querySelectorAll('span'));
+    console.log(spans.length);
+    spans.forEach(span => {
+      console.log(span.textContent);
+      if (!span.textContent.trim()) {
+        indices.push(spans.indexOf(span));
+      }
+    });
+
+    return indices;
   }
 
   public replaceCommentWithPlainText(selectedRange: TextRange): void {
@@ -178,26 +376,31 @@ export class Editor implements IReceiver {
       range.deleteContents();
       range.insertNode(node);
 
-      this.contentEditableElement.innerHTML = this.contentEditableElement.innerHTML.replace(/<span\b[^>]*>\s*<\/span>/gi, '');
+      this.cleanUpComments();
     }
   }
 
-  highlightCommentedArea(selectedRange: TextRange) {
+  public highlightCommentedArea(selectedRange: TextRange): Node {
     let range = document.createRange();
 
     if (this.setRangeNodesForPosition(selectedRange,  range)) {
       const span = document.createElement('span');
       span.style.backgroundColor = '#f0f0f0';
       span.style.borderRadius = '4px';
-      span.textContent = range.toString();
       span.setAttribute('comment', 'true');
 
+      const clone = range.cloneContents();
       range.deleteContents();
+      span.appendChild(clone); // wrap range with span
       range.insertNode(span);
+
+      return span;
     }
+
+    return null;
   }
 
-  setCursorAtPosition(pos: number) {
+  public setCursorAtPosition(pos: number) {
     const range = document.createRange();
     const selection = window.getSelection();
 
@@ -212,8 +415,56 @@ export class Editor implements IReceiver {
       // Clear existing selections and apply the new range
       selection.removeAllRanges();
       selection.addRange(range);
+    }
+  }
 
+  private moveCaretOutsideSpan(span: HTMLElement, moveAfter: boolean) {
+    const range = document.createRange();
+    const selection = window.getSelection();
 
+    if (moveAfter) {
+      // Move caret after the span
+      if (span.nextSibling) {
+        range.setStart(span.nextSibling, 0); // Move to the start of the next sibling
+      } else if (span.parentNode) {
+        range.setStartAfter(span); // If no sibling, move to the end of the span
+      }
+    } else {
+      // Move caret before the span
+      range.setStartBefore(span);
+    }
+
+    range.collapse(true); // Collapse the range to set the caret position
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  private checkCommentAreaChange(isInput: boolean) {
+    // check if character is inserted, or just the cursor was moved
+    const selection = window.getSelection();
+    const parentElement = selection.anchorNode.parentNode as HTMLElement;
+    const nextSibling =  selection.anchorNode.nextSibling as HTMLElement;
+
+    const parentSpan = parentElement && this.isComment(parentElement);
+    const siblingSpan = nextSibling && this.isComment(nextSibling);
+    const range = selection.getRangeAt(0);
+    if (parentSpan || siblingSpan) {
+      if (isInput) {
+        const allSpans = Array.from(document.querySelectorAll<HTMLSpanElement>('span[comment]'));
+        let spanIndex = allSpans.indexOf(parentElement);
+
+        const span = spanIndex < 0 ? nextSibling : parentElement;
+        spanIndex = spanIndex < 0 ? allSpans.indexOf(nextSibling) : spanIndex;
+
+        const shouldPreventEdit = range.startOffset == 0 || range.startOffset == parentElement.textContent.length; // borders of comment span
+        if (shouldPreventEdit) {
+          console.log('aha');
+          parentElement.setAttribute('contenteditable', 'false');
+          this.moveCaretOutsideSpan(parentElement, range.startOffset !== 0);
+          this.contentEditableElement.focus();
+          this.cursorSurroundingElement = parentElement;
+        }
+      }
     }
   }
 }

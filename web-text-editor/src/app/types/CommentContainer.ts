@@ -23,6 +23,14 @@ export class CommentContainer {
     this.allReplies.pop();
   }
 
+  public setStartIndex(start: number) {
+    this.commentedArea.start = start;
+  }
+
+  public setEndIndex(end: number) {
+    this.commentedArea.end = end;
+  }
+
   public getStartIndex(): number {
     return this.commentedArea.start;
   }

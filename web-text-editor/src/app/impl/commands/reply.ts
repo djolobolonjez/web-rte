@@ -36,7 +36,7 @@ export class Reply implements IUndoableCommand {
       return false;
     }
 
-    const newReply = new CommentReply("placeholder", this.reply);
+    const newReply = new CommentReply(sessionStorage.getItem('username'), this.reply);
     this.commentHandler.addReply(this.commentID, newReply);
     this.undoManager.add(this);
 

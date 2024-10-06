@@ -41,13 +41,12 @@ export class Comment implements IUndoableCommand {
   attachReceiver(receiver: IReceiver) {}
 
   execute(): boolean {
-    let {start, end} = this.commentedAreaRange;
-    if (start == end) {
+    if (!this.canExecute()) {
       return false;
     }
 
     let commentThread = new CommentContainer(this.commentedAreaRange);
-    commentThread.addReply(new CommentReply("placeholder", this.initialComment));
+    commentThread.addReply(new CommentReply(sessionStorage.getItem('username'), this.initialComment));
     this.addCommentThread(commentThread);
     this.undoManager.add(this);
 
@@ -55,8 +54,8 @@ export class Comment implements IUndoableCommand {
     return true;
   }
   canExecute(): boolean {
-    // ne moze da se izvrsi ako je selektovan deo teksta vec komentarisan
-    return true;
+    let {start, end} = this.commentedAreaRange;
+    return start != end && this.initialComment.length > 0;
   }
 
   private addCommentThread(commentThread: CommentContainer) {

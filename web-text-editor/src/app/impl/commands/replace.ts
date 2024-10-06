@@ -2,6 +2,9 @@ import { SearchManager } from "../../../assets/pkg/editor_wasm";
 import { IUndoableCommand } from "../../api/commands/undoable";
 import { Editor } from "../../core/impl/editor";
 import { IReceiver } from "../../core/interfaces/receiver";
+import { TextRange } from "../../types/comment.box";
+import { CommentContainer } from "../../types/CommentContainer";
+import { CommentHandler } from "../CommentHandler";
 import { SearchManagerProxy } from "../SearchManagerProxy";
 import { UndoRedoManager } from "../UndoRedoManager";
 import { Find } from "./find";
@@ -13,11 +16,15 @@ export class Replace implements IUndoableCommand {
 
   private undoManager: UndoRedoManager;
 
+  private commentHandler: CommentHandler;
+
   private old: string;
 
   private replacement: string;
 
   private startIndex: number;
+
+  private commentsOldPositions: Map<CommentContainer, TextRange>;
 
   public constructor(old: string, replacement: string) {
     this.searchManager = SearchManagerProxy.importManager();
@@ -25,6 +32,7 @@ export class Replace implements IUndoableCommand {
     this.undoManager = UndoRedoManager.getInstance();
     this.old = old;
     this.replacement = replacement;
+    this.commentHandler = CommentHandler.getInstance();
   }
 
   private replaceTerm(searchTerm: string, replacementTerm: string): boolean {
@@ -53,11 +61,19 @@ export class Replace implements IUndoableCommand {
   public undo(): void {
     this.editor.replaceSelectedContent({start: this.startIndex, end: this.startIndex + this.replacement.length}, this.old);
     this.searchManager.insert_in_order(this.startIndex);
+
+    this.commentsOldPositions.forEach((value, key) => {
+      key.setStartIndex(value.start);
+      key.setEndIndex(value.end);
+    });
   }
 
   public redo(): void {
     this.editor.replaceSelectedContent({start: this.startIndex, end: this.startIndex + this.old.length}, this.replacement);
     this.searchManager.remove_element(this.startIndex);
+
+    const shiftAmount = this.replacement.length - this.old.length;
+    this.commentsOldPositions = this.commentHandler.shiftComments(shiftAmount, this.startIndex, this.startIndex + this.old.length);
   }
 
   public execute(): boolean {
@@ -70,6 +86,9 @@ export class Replace implements IUndoableCommand {
     }
     this.editor.setLastCommand(this);
     this.searchManager.remove_last();
+
+    const shiftAmount = this.replacement.length - this.old.length;
+    this.commentsOldPositions = this.commentHandler.shiftComments(shiftAmount, this.startIndex, this.startIndex + this.old.length);
 
     this.undoManager.add(this);
 
