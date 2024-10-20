@@ -23,6 +23,9 @@ export class InlineStyle implements IUndoableCommand {
     this.undoManager = UndoRedoManager.getInstance();
     this.styleHandler = StyleHandler.getInstance();
   }
+  getConstructorName(): string {
+    return this.tag;
+  }
 
   private isValidTag(): boolean {
     const allowedTags: Array<string> = ['bold', 'italic', 'underline'];

@@ -20,6 +20,9 @@ export class Find implements ICommand {
     this.searchManager = SearchManagerProxy.importManager();
     this.searchTerm = searchTerm;
   }
+  getConstructorName(): string {
+    return "Find";
+  }
 
   public canExecute(): boolean {
     return true;

@@ -104,7 +104,7 @@ export class Editor implements IReceiver {
     }
   }
 
-  isComment(element: HTMLElement | undefined): boolean {
+  private isComment(element: HTMLElement | undefined): boolean {
     if (!element)
       return false;
 

@@ -34,6 +34,9 @@ export class Replace implements IUndoableCommand {
     this.replacement = replacement;
     this.commentHandler = CommentHandler.getInstance();
   }
+  getConstructorName(): string {
+    return "Replace";
+  }
 
   private replaceTerm(searchTerm: string, replacementTerm: string): boolean {
     const lastCommand = this.editor.getLastCommand();

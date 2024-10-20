@@ -4,4 +4,5 @@ export interface ICommand {
     attachReceiver(receiver: IReceiver);
     execute(): boolean;
     canExecute(): boolean;
+    getConstructorName(): string;
 }

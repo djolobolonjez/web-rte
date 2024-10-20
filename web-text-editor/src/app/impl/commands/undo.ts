@@ -9,6 +9,9 @@ export class Undo implements ICommand {
   public constructor() {
     this.manager = UndoRedoManager.getInstance();
   }
+  getConstructorName(): string {
+    return "Undo";
+  }
 
   public attachReceiver(receiver: IReceiver) {}
 

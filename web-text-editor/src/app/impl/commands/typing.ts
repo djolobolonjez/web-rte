@@ -38,6 +38,9 @@ export class Typing implements IUndoableCommand {
     this.commentMemento = [];
     this.isUndo = false;
   }
+  getConstructorName(): string {
+    return "Typing";
+  }
 
   private backupContentAndDelete(): void {
     this.textMemento = this.editor.getRawContent();

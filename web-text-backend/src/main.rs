@@ -3,7 +3,7 @@ mod repository;
 mod models;
 
 use actix_web::{get, web::Data, App, HttpResponse, HttpServer, Responder};
-use api::user_api::{create_user, get_document, get_user, insert_document, share_document};
+use api::user_api::{create_user, find_user, get_document, get_user, insert_document, share_document};
 use repository::mongodb_repo::MongoRepo;
 
 use actix_cors::Cors;
@@ -27,6 +27,7 @@ async fn main() -> std::io::Result<()> {
             .service(insert_document)
             .service(get_document)
             .service(share_document)
+            .service(find_user)
     })
     .bind(("127.0.0.1", 8080))?
     .run()

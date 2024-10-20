@@ -46,6 +46,10 @@ export class CommentHandler {
     this.commentsObservable.next(this.cloneCommentContainers());
   }
 
+  public getRawComments() {
+    return structuredClone(this.allComments);
+  }
+
   public parseComments(bsonDocObject: object[]) {
     let docArray = bsonDocObject.map(obj => Object.entries(obj));
     docArray.forEach(doc => {

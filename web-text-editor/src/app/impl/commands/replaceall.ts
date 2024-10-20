@@ -35,6 +35,9 @@ export class ReplaceAll implements IUndoableCommand {
     this.replacement = replacement;
     this.replacedIndices = [];
   }
+  getConstructorName(): string {
+    return "Replace All";
+  }
 
   public canExecute(): boolean {
     return true;

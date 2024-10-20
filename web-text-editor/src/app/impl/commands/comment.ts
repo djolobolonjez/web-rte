@@ -27,6 +27,9 @@ export class Comment implements IUndoableCommand {
     this.commentedAreaRange = this.editor.getPreviousRange();
     this.initialComment = initialComment;
   }
+  getConstructorName(): string {
+    return "Comment";
+  }
 
   undo(): void {
     this.editor.replaceCommentWithPlainText(this.commentedAreaRange);

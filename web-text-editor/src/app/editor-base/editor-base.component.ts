@@ -16,6 +16,7 @@ import { LoadWasm } from '../core/impl/WasmLoader';
 import { StyleHandler } from '../impl/StyleHandler';
 import { Router } from '@angular/router';
 import { CommonService } from '../services/common.service';
+import { error } from 'jquery';
 
 @Component({
   selector: 'app-editor-base',
@@ -48,8 +49,17 @@ export class EditorBaseComponent {
     '22': '7'
   };
 
-  loginUsername: string;
-  loginPassword: string;
+  reverseFontSizeMap: { [key: string]: string } = {
+    '2': '12',
+    '3': '14',
+    '4': '16',
+    '5': '18',
+    '6': '20',
+    '7': '22'
+  };
+
+  loginUsername: string = "";
+  loginPassword: string = "";
   loginErrorMessage: string = "";
 
   welcomeMessage: string = "";
@@ -59,6 +69,8 @@ export class EditorBaseComponent {
   isGuestState: boolean = sessionStorage.getItem('username') == null;
 
   files: string[] = [];
+
+  commands: string[] = [];
 
   isExistingComment: boolean = false;       // Flag to check if selected text has a comment
   showFloatingToolbar: boolean = false;     // Position of the floating toolbar
@@ -90,7 +102,6 @@ export class EditorBaseComponent {
   }
 
   hideToolbar() {
-    console.log('bb');
     this.showToolbar = false;
   }
 
@@ -127,7 +138,6 @@ export class EditorBaseComponent {
 
   closeCreate() {
     this.isCreateOpen = false;
-    this.create();
   }
 
   closeAndCreate() {
@@ -139,13 +149,35 @@ export class EditorBaseComponent {
     if (this.isGuestState) {
       return;
     }
+    console.log(sessionStorage.getItem('doctype'));
+    this.isSaveOpen = false;
     this.isDocumentSaved = true;
     if (this.newDocname) {
       sessionStorage.setItem('docname', this.newDocname);
       this.newDocname = '';
     }
 
-    this.commonService.saveDocument(sessionStorage.getItem('docname'));
+    const owner = sessionStorage.getItem('doctype') === '1' ? sessionStorage.getItem('owner') : sessionStorage.getItem('username');
+
+    this.commonService.saveDocument(owner, sessionStorage.getItem('docname')).subscribe({
+      next: (resp) => {
+        this.commonService.findUser().subscribe({
+          next: (resp: any) => {
+            this.files = [];
+            for (let i = 0; i < resp.documents.length; i++) {
+              this.files.push(resp.documents[i].name);
+            }
+            sessionStorage.setItem('documents', this.files.join(", "));
+          },
+          error: (err) => {
+            console.log(err);
+          }
+        })
+      },
+      error: (err) => {
+        console.log(err);
+      }
+    })
   }
 
   saveAndCreate() {
@@ -159,10 +191,12 @@ export class EditorBaseComponent {
     sessionStorage.removeItem('owner');
     sessionStorage.removeItem('doctype');
 
+    sessionStorage.setItem('doctype', '0');
+    sessionStorage.setItem('owner', sessionStorage.getItem('username'));
     StyleHandler.getInstance().clear();
     CommentHandler.getInstance().clear();
     this.editor.clear();
-    this.router.navigate(['']);
+    window.location.reload();
   }
 
   createDocument() {
@@ -172,12 +206,13 @@ export class EditorBaseComponent {
     if (!this.isDocumentSaved) {
       this.isCreateOpen = true;
     }
-    // TODO
-    // ask for saving
+    else {
+      this.create();
+    }
   }
 
   shareDocument() {
-    if (this.isGuestState) {
+    if (this.isGuestState || sessionStorage.getItem('docname') == null) {
       return;
     }
     this.isShareOpen = true;
@@ -189,6 +224,7 @@ export class EditorBaseComponent {
 
   share() {
     console.log(this.shareAddress);
+    this.isShareOpen = false;
     this.commonService.shareDocument(this.shareAddress).subscribe({
       next: (response) => {},
       error: (err) => {
@@ -205,9 +241,8 @@ export class EditorBaseComponent {
         sessionStorage.setItem('docname', response.name);
         sessionStorage.setItem('owner', response.owner);
         sessionStorage.setItem('doctype', response.doctype);
-        console.log(response.comments);
         CommentHandler.getInstance().parseComments(response.comments);
-
+        console.log(sessionStorage.getItem('doctype'));
       },
       error: (err) => {
         if (err.status === 400) {
@@ -223,23 +258,23 @@ export class EditorBaseComponent {
 
   logout() {
     sessionStorage.clear();
-    this.isGuestState = true;
-    this.router.navigate(['']);
+    CommentHandler.getInstance().clear();
+    StyleHandler.getInstance().clear();
+    this.editor.clear();
+    window.location.reload();
   }
 
   login() {
-    // TODO: sacuvati username i nazive svih dokumenata u sessionStorage
     this.commonService.login(this.loginUsername, this.loginPassword).subscribe({
       next: (response: any) => {
-        console.log(response);
         sessionStorage.setItem('username', response.username);
         for (let i = 0; i < response.documents.length; i++) {
           this.files.push(response.documents[i].name);
         }
         sessionStorage.setItem('documents', this.files.join(", "));
 
-        this.isGuestState = false;
         this.closeLogin();
+        window.location.reload();
       },
       error: (error) => {
         if (error.status === 400) {
@@ -364,7 +399,7 @@ export class EditorBaseComponent {
   }
 
 
-  /*updateFontIndicator() {
+  updateFontIndicator() {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
@@ -376,10 +411,12 @@ export class EditorBaseComponent {
         if (fontTag) {
           const size = parseInt(fontTag.getAttribute('size')!);
           if (size >= 2 && size <= 7) {
-            if (size != this.scale)
+            if (size != parseInt(this.scale))
               document.execCommand('fontName', false, size.toString()); // font size changed
-            this.scale = size;
-            this.fontSize = this.fontSizeMap[size];
+            this.scale = size.toString();
+            this.fontSize = this.reverseFontSizeMap[this.scale];
+            const fontSizeSelect = document.getElementById('fontSizeSelect') as HTMLSelectElement;
+            fontSizeSelect.value = this.fontSize;
           }
           const face = fontTag.getAttribute('face');
           if (face) {
@@ -393,7 +430,7 @@ export class EditorBaseComponent {
         }
       }
     }
-  }*/
+  }
 
   // Handle input events to update the content
   onInput(event: Event) {
@@ -462,7 +499,14 @@ export class EditorBaseComponent {
     });
 
     this.files = sessionStorage.getItem('documents')?.split(", ") || [];
-    this.welcomeMessage = "Hello, " + sessionStorage.getItem('username');
+
+    const username = sessionStorage.getItem('username') || "Guest";
+    this.welcomeMessage = "Hello, " + username;
+
+
+    UndoRedoManager.getInstance().subscribe((commands: string[]) => {
+      this.commands = commands.reverse();
+    })
 
     commentHandler.subscribeCommentState((commentExists: boolean) => {
       this.isExistingComment = commentExists;
@@ -481,13 +525,24 @@ export class EditorBaseComponent {
       const selRange = this.editor.getPreviousRange();
       if (selRange.end > selRange.start) {
         this.updateToolbarPosition(event);
+      } else {
+        this.showToolbar = false;
       }
+      this.updateFontIndicator();
+    });
+
+    this.renderer.listen(editor, 'keyup', (event) => {
+      this.updateFontIndicator();
     });
 
     // Initialize font and font size;
     editor.focus();
-    document.execCommand('fontSize', false, this.scale);
-    document.execCommand('fontName', false, this.fontFamily);
+    if (!document.queryCommandState('fontSize'))
+      document.execCommand('fontSize', false, this.scale);
+
+
+    if (!document.queryCommandState('fontName'))
+      document.execCommand('fontName', false, this.fontFamily);
 
     LoadWasm();
   }

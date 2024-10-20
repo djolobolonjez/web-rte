@@ -1,3 +1,4 @@
+import { BehaviorSubject } from "rxjs";
 import { IUndoableCommand } from "../api/commands/undoable";
 
 export class UndoRedoManager {
@@ -10,10 +11,16 @@ export class UndoRedoManager {
 
   private redoStack: Array<IUndoableCommand>;
 
+  private lastCommands: Array<String>;
+
+  private commandsObservable: BehaviorSubject<Array<String>>;
+
   private constructor() {
     this.maxSize = 30;
     this.undoStack = [];
     this.redoStack = [];
+    this.lastCommands = [];
+    this.commandsObservable = new BehaviorSubject(this.lastCommands);
   }
 
   public lastCommand(): IUndoableCommand {
@@ -38,19 +45,27 @@ export class UndoRedoManager {
   public add(undoableCommand: IUndoableCommand) {
     if (this.undoStack.length == this.maxSize) {
       this.undoStack.shift();
+      this.lastCommands.shift();
     }
+
+    this.lastCommands.push(undoableCommand.getConstructorName());
 
     this.undoStack.push(undoableCommand);
     this.redoStack.length = 0; // clear redo stack
+
+    this.commandsObservable.next(this.lastCommands);
   }
 
   public undo() {
     const undoableCommand = this.undoStack.pop();
+    this.lastCommands.pop();
 
     if (undoableCommand) {
       undoableCommand.undo();
       this.redoStack.push(undoableCommand);
     }
+
+    this.commandsObservable.next(this.lastCommands);
   }
 
   public redo() {
@@ -59,7 +74,14 @@ export class UndoRedoManager {
     if (undoableCommand) {
       undoableCommand.redo();
       this.undoStack.push(undoableCommand);
+      this.lastCommands.push(undoableCommand.getConstructorName());
     }
+
+    this.commandsObservable.next(this.lastCommands);
+  }
+
+  public subscribe(callback) {
+    this.commandsObservable.subscribe(callback);
   }
 
 }

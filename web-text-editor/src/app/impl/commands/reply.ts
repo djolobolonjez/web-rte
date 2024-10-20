@@ -22,6 +22,9 @@ export class Reply implements IUndoableCommand {
     this.reply = reply;
     this.commentID = commentID;
   }
+  getConstructorName(): string {
+    return "Comment reply";
+  }
 
   undo(): void {
     this.commentHandler.removeReply(this.commentID);
